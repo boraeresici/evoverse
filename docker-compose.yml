@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: evoverse-postgres
+    environment:
+      POSTGRES_DB: evoverse
+      POSTGRES_USER: evoverse
+      POSTGRES_PASSWORD: evoverse
+    ports:
+      - "${EVOVERSE_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - evoverse-postgres:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evoverse -d evoverse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  evoverse-postgres:

@@ -1,0 +1,26 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+*.log
+tmp/
+
+# Internal / non-public docs (active sprint tracker + Turkish planning docs)
+sıra.md
+sira.md
+/internal/

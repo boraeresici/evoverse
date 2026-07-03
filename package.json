@@ -1,0 +1,15 @@
+{
+  "name": "evoverse",
+  "private": true,
+  "version": "0.3.0",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "uvicorn app.main:app --reload --app-dir backend",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:worker": "PYTHONPATH=backend python -m app.worker",
+    "test:backend": "PYTHONPATH=backend pytest backend/tests",
+    "smoke:simulation": "PYTHONPATH=backend python -m app.simulation.smoke"
+  }
+}

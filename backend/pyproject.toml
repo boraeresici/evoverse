@@ -1,0 +1,16 @@
+[project]
+name = "evoverse-backend"
+version = "0.3.0"
+description = "FastAPI backend and simulation core for Evoverse Alpha."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.135",
+  "pydantic>=2.13",
+  "psycopg[binary]>=3.2",
+  "sqlalchemy>=2",
+  "uvicorn>=0.42"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
