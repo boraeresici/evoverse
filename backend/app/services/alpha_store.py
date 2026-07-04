@@ -2220,6 +2220,21 @@ class AlphaStore:
                     status="active",
                     granted_by="system",
                 )
+        # Repair env-declared admins. A pre-existing role row (e.g. a lower or
+        # inactive grant from before the id was added to
+        # EVOVERSE_AUTH_BOOTSTRAP_ADMINS) must not silently block admin access.
+        # Only ever upgrade — never downgrade an existing admin.
+        for user_id in self._bootstrap_admins:
+            existing = self._catalyst_role(user_id)
+            if existing is not None and (
+                existing.get("role") != "admin" or existing.get("status") != "active"
+            ):
+                self._save_catalyst_role(
+                    user_id=user_id,
+                    role="admin",
+                    status="active",
+                    granted_by="system",
+                )
 
     def _catalyst_capability_payload(
         self,

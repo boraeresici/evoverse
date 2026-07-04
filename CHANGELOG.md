@@ -6,6 +6,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [0.3.7] - 2026-07-04
+
+### Fixed
+
+- An account listed in `EVOVERSE_AUTH_BOOTSTRAP_ADMINS` was not granted admin if
+  a role row already existed for it (e.g. a lower or inactive grant created
+  before the id was added to the allowlist). The admin baseline only inserted
+  when no row existed, so a stale row silently blocked promotion. The baseline
+  now repairs env-declared admins to an active `admin` role on startup, without
+  ever downgrading an existing admin.
+
 ## [0.3.6] - 2026-07-04
 
 ### Fixed
