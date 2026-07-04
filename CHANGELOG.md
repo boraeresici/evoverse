@@ -6,6 +6,26 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [0.3.6] - 2026-07-04
+
+### Fixed
+
+- After signing in with Google, the Admin config page could still show "Admin
+  access required" for an admin account. The auth-state-dependent nav links
+  (`/auth`, `/admin/config`) used Next.js default prefetch, so a logged-out
+  prefetch could cache a session-less render that survived sign-in. Those links
+  now use `prefetch={false}`, and the admin page is `force-dynamic` so it always
+  renders against the live session cookie.
+
+### Changed
+
+- The admin gate now distinguishes three states instead of always claiming the
+  user lacks the admin role: "Sign in required" (no session reached the backend),
+  "Access could not be verified" (session active but the role check failed —
+  reload to retry), and the authenticated-but-not-admin denial (now naming the
+  signed-in identity). This makes a missing/blocked session obvious instead of
+  reading as an authorization failure.
+
 ## [0.3.5] - 2026-07-04
 
 ### Fixed

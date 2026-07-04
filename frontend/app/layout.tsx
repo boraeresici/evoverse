@@ -100,11 +100,13 @@ export default function RootLayout({
             <Link href="/notifications" aria-label="Notifications">
               <Bell size={17} aria-hidden="true" />
             </Link>
-            <Link href="/auth">
+            {/* Auth-state-dependent routes: never prefetch, so a logged-out
+                prefetch can't cache a session-less view that survives sign-in. */}
+            <Link href="/auth" prefetch={false}>
               <KeyRound size={17} aria-hidden="true" />
               <span>Auth</span>
             </Link>
-            <Link href="/admin/config">
+            <Link href="/admin/config" prefetch={false}>
               <SlidersHorizontal size={17} aria-hidden="true" />
               <span>Admin</span>
             </Link>

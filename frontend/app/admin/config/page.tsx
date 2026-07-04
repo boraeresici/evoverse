@@ -19,15 +19,20 @@ import {
   getIdentityContext,
   getSimulationHealth
 } from "@/lib/api";
+import { getServerAuthSession } from "@/lib/authSession";
 import type { IdentityContextData, SimulationHealthData } from "@/lib/types";
 
+// Always render against the live session cookie — never a prefetched/cached view.
+export const dynamic = "force-dynamic";
+
 export default async function AdminConfigPage() {
-  const [data, identity, auditPage, revisionPage, health] = await Promise.all([
+  const [data, identity, auditPage, revisionPage, health, session] = await Promise.all([
     getAdminRules(),
     getIdentityContext(),
     getAdminRulesAudit(),
     getAdminRulesRevisions(),
-    getSimulationHealth()
+    getSimulationHealth(),
+    getServerAuthSession()
   ]);
 
   if (!data) {
@@ -36,6 +41,14 @@ export default async function AdminConfigPage() {
 
   const canApply = identity?.capabilities.admin.canUseAdmin ?? false;
   const gateReason = identity?.capabilities.admin.reason ?? null;
+  // Distinguish "no session reached the backend" from "signed in but not admin":
+  // identity is null when /me/identity rejects the request (no session forwarded),
+  // which is a sign-in prompt — not an authorization failure.
+  const gateKind: "signin" | "unverified" | "denied" = !identity
+    ? session
+      ? "unverified"
+      : "signin"
+    : "denied";
 
   return (
     <main className="page-shell admin-page">
@@ -77,7 +90,12 @@ export default async function AdminConfigPage() {
           />
         </>
       ) : (
-        <AdminGatePanel reason={gateReason} provider={identity?.auth.provider ?? "local"} />
+        <AdminGatePanel
+          kind={gateKind}
+          reason={gateReason}
+          provider={identity?.auth.provider ?? "local"}
+          sessionUser={session?.userId ?? null}
+        />
       )}
     </main>
   );
@@ -167,14 +185,57 @@ function IdentityRoleCard({
   );
 }
 
-function AdminGatePanel({ reason, provider }: { reason: string | null; provider: string }) {
+function AdminGatePanel({
+  kind,
+  reason,
+  provider,
+  sessionUser
+}: {
+  kind: "signin" | "unverified" | "denied";
+  reason: string | null;
+  provider: string;
+  sessionUser: string | null;
+}) {
+  if (kind === "signin") {
+    return (
+      <section className="admin-gate-panel" aria-label="Sign in required">
+        <Lock size={26} aria-hidden="true" />
+        <h2>Sign in required</h2>
+        <p>
+          Simulation rules and operations controls are restricted to admin accounts. You are not
+          signed in on this device.
+        </p>
+        <p className="admin-gate-hint">
+          Sign in with an admin account through the <a href="/auth">Access Console</a>, then return
+          here to draft, apply, or roll back rules.
+        </p>
+      </section>
+    );
+  }
+
+  if (kind === "unverified") {
+    return (
+      <section className="admin-gate-panel" aria-label="Admin access could not be verified">
+        <Lock size={26} aria-hidden="true" />
+        <h2>Access could not be verified</h2>
+        <p>
+          Your session is active{sessionUser ? ` as ${sessionUser}` : ""}, but the backend did not
+          confirm your role for this request. Reload the page to retry.
+        </p>
+        <p className="admin-gate-hint">
+          If this keeps happening, re-authenticate through the <a href="/auth">Access Console</a>.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="admin-gate-panel" aria-label="Admin access restricted">
       <Lock size={26} aria-hidden="true" />
       <h2>Admin access required</h2>
       <p>
         Simulation rules and operations controls are restricted to admin accounts. Your current
-        identity does not have the admin role
+        identity{sessionUser ? ` (${sessionUser})` : ""} does not have the admin role
         {reason ? ` (${formatToken(reason)})` : ""}.
       </p>
       <p className="admin-gate-hint">
