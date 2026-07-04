@@ -5,17 +5,71 @@ services:
     environment:
       POSTGRES_DB: evoverse
       POSTGRES_USER: evoverse
-      POSTGRES_PASSWORD: evoverse
+      POSTGRES_PASSWORD: ${EVOVERSE_POSTGRES_PASSWORD:-evoverse}
     ports:
       - "${EVOVERSE_POSTGRES_PORT:-5433}:5432"
     volumes:
       - evoverse-postgres:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U evoverse -d evoverse"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # The app services below are for a full-stack deploy (e.g. Coolify Docker
+  # Compose). Local development can still run just the database with
+  # `docker compose up -d postgres` and start the API/worker/frontend manually.
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      EVOVERSE_ENV: production
+      EVOVERSE_PERSISTENCE: postgres
+      EVOVERSE_DATABASE_URL: postgresql+psycopg://evoverse:${EVOVERSE_POSTGRES_PASSWORD:-evoverse}@postgres:5432/evoverse
+      EVOVERSE_SEED: ${EVOVERSE_SEED:-4211}
+      EVOVERSE_BOOT_TICKS: ${EVOVERSE_BOOT_TICKS:-96}
+      # Demo default keeps the local fallback on; set to false with real auth for production.
+      EVOVERSE_AUTH_ALLOW_LOCAL_FALLBACK: ${EVOVERSE_AUTH_ALLOW_LOCAL_FALLBACK:-true}
+      EVOVERSE_ALLOW_DESTRUCTIVE_OPS: ${EVOVERSE_ALLOW_DESTRUCTIVE_OPS:-false}
+    # Apply migrations, then serve the API.
+    command: >
+      sh -c "python -m app.persistence.migrations upgrade && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${EVOVERSE_BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      EVOVERSE_ENV: production
+      EVOVERSE_PERSISTENCE: postgres
+      EVOVERSE_DATABASE_URL: postgresql+psycopg://evoverse:${EVOVERSE_POSTGRES_PASSWORD:-evoverse}@postgres:5432/evoverse
+      EVOVERSE_SEED: ${EVOVERSE_SEED:-4211}
+      EVOVERSE_BOOT_TICKS: ${EVOVERSE_BOOT_TICKS:-96}
+      EVOVERSE_WORKER_INTERVAL_SECONDS: ${EVOVERSE_WORKER_INTERVAL_SECONDS:-2}
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_AUTH_PROVIDER: ${NEXT_PUBLIC_AUTH_PROVIDER:-local}
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      # Server-side reads and BFF routes reach the backend over the compose network.
+      EVOVERSE_API_URL: http://backend:8000
+    ports:
+      - "${EVOVERSE_FRONTEND_PORT:-3000}:3000"
+    restart: unless-stopped
 
 volumes:
   evoverse-postgres:

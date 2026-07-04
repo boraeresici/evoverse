@@ -6,6 +6,32 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Active sprint tracking lives in `sıra.md`; `docs/` and `prd.md` are product references.
 
+## [0.3.1] - 2026-07-04
+
+Deployment scaffolding — the full-stack app was failing to deploy because the
+monorepo root was being built as a single Node app.
+
+### Added
+
+- `frontend/Dockerfile` (Next.js standalone) and `backend/Dockerfile` (FastAPI;
+  reused for the worker), plus `.dockerignore` files and `backend/requirements.txt`.
+- Full-stack `docker-compose.yml` (postgres + backend + worker + frontend) for a
+  one-command deploy on Docker-Compose hosts.
+- Frontend `start` script, `output: "standalone"` in `next.config.mjs`, and a
+  `node >= 20` engines hint.
+- README "Deployment" section and updated operations guidance.
+
+### Changed
+
+- `docker-compose.yml` postgres no longer mounts migrations as init scripts; the
+  migration runner (`make migrate` / backend start command) is the single path,
+  avoiding double-apply.
+
+### Fixed
+
+- Deployments that built the repo root now have per-service Docker builds that
+  succeed (verified by building and running both images).
+
 ## [0.3.0] - 2026-07-03
 
 First public release. Operations readiness, an admin auth boundary, a help

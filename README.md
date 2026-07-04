@@ -4,7 +4,7 @@ Evoverse is a persistent artificial life observatory. The product starts with Al
 
 🌐 <a href="https://evoverse.studiobinary.co" target="_blank" rel="noreferrer"><b>Live demo — evoverse.studiobinary.co</b></a> (test environment)
 
-**Version:** 0.3.0 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
+**Version:** 0.3.1 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
 
 ## What's Inside (0.2.0)
 
@@ -67,7 +67,32 @@ make migrate-status
 make migrate
 ```
 
-The current migration path uses ordered SQL files in `backend/migrations` plus a `schema_migrations` ledger table with checksums. Docker Compose still mounts `backend/migrations` for first-time PostgreSQL bootstrap. For existing databases, run `make migrate`; the initial schema is idempotent and can safely record the baseline if the database was created before the ledger existed. Alembic is intentionally deferred until schema churn or downgrade/autogeneration needs justify the extra framework surface.
+The current migration path uses ordered SQL files in `backend/migrations` plus a `schema_migrations` ledger table with checksums. `make migrate` (or, in containers, the backend startup command) is the single migration path. Alembic is intentionally deferred until schema churn or downgrade/autogeneration needs justify the extra framework surface.
+
+## Deployment
+
+Evoverse is a full-stack app (Next.js frontend + FastAPI backend + a simulation worker sharing PostgreSQL). It deploys as **separate services**, not one — building the monorepo root as a single app will fail.
+
+Each service has a Dockerfile:
+
+- `frontend/Dockerfile` — Next.js standalone production server (port 3000).
+- `backend/Dockerfile` — FastAPI API; the same image runs the worker with `python -m app.worker`.
+
+One-command full stack (also suitable for Docker-Compose-based hosts such as Coolify):
+
+```bash
+docker compose up --build
+```
+
+That starts `postgres`, `backend` (runs migrations then serves on 8000), `worker`, and `frontend` (on 3000, reaching the backend at `http://backend:8000` via `EVOVERSE_API_URL`).
+
+For platform (Railway/Render/Coolify) service-per-app setups, point each service at its Dockerfile:
+
+- **Backend**: `backend/Dockerfile`; set `EVOVERSE_PERSISTENCE=postgres`, `EVOVERSE_DATABASE_URL`, and run migrations on start (`python -m app.persistence.migrations upgrade`).
+- **Worker**: same image, command `python -m app.worker`.
+- **Frontend**: `frontend/Dockerfile`; set `EVOVERSE_API_URL` to the backend's internal URL.
+
+See `docs/OPERATIONS_PLAYBOOK.md` for the deployment model, environment matrix, and recovery runbook.
 
 ## Verification
 
