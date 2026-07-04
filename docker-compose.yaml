@@ -76,6 +76,11 @@ services:
     environment:
       # Server-side reads and BFF routes reach the backend over the compose network.
       EVOVERSE_API_URL: http://backend:8000
+      # Coolify magic var: binds the public domain to THIS service on port 3000 so
+      # its proxy has a route (fixes "no available server"). Set the value in
+      # Coolify env, e.g. SERVICE_FQDN_FRONTEND_3000=https://evoverse.studiobinary.co.
+      # Empty/unused on other platforms.
+      SERVICE_FQDN_FRONTEND_3000: ${SERVICE_FQDN_FRONTEND_3000:-}
     # This is the public web service. On Coolify, assign the domain to `frontend`
     # and its proxy routes to this exposed port (no host port publishing needed).
     expose:
