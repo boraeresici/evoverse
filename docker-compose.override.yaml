@@ -1,0 +1,15 @@
+# Local development only. `docker compose up` auto-merges this file and publishes
+# host ports (so `make backend` / `make frontend` running outside Docker can reach
+# postgres on localhost, etc.). Coolify runs `docker compose -f docker-compose.yaml`
+# explicitly, which does NOT load this override — so the deploy stays internal-only
+# and never publishes conflicting host ports.
+services:
+  postgres:
+    ports:
+      - "${EVOVERSE_POSTGRES_PORT:-5433}:5432"
+  backend:
+    ports:
+      - "${EVOVERSE_BACKEND_PORT:-8000}:8000"
+  frontend:
+    ports:
+      - "${EVOVERSE_FRONTEND_PORT:-3000}:3000"

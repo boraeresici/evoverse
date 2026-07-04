@@ -4,7 +4,7 @@ Evoverse is a persistent artificial life observatory. The product starts with Al
 
 🌐 <a href="https://evoverse.studiobinary.co" target="_blank" rel="noreferrer"><b>Live demo — evoverse.studiobinary.co</b></a> (test environment)
 
-**Version:** 0.3.2 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
+**Version:** 0.3.3 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
 
 ## What's Inside (0.2.0)
 
@@ -87,6 +87,8 @@ docker compose up --build
 That starts `postgres`, `backend` (runs migrations then serves on 8000), `worker`, and `frontend` (on 3000, reaching the backend at `http://backend:8000` via `EVOVERSE_API_URL`). The browser only ever talks to the frontend origin — live chronicle streaming is proxied through `/api/events/stream`, so the backend stays internal (no CORS, no public API host).
 
 For a **public demo**, the compose defaults lock the admin surface (`EVOVERSE_ALLOW_LOCAL_ADMIN=false`) and destructive ops (`EVOVERSE_ALLOW_DESTRUCTIVE_OPS=false`) while keeping observer/catalyst interaction open. Set `EVOVERSE_ALLOW_LOCAL_ADMIN=true` (or wire real auth) for a private instance.
+
+`docker-compose.yaml` runs the services on the internal network only (no host ports), which is what managed Docker-Compose hosts want — **on Coolify, assign the domain to the `frontend` service** and its proxy routes to the exposed port. Local development gets host ports (postgres `5433`, backend `8000`, frontend `3000`) automatically via `docker-compose.override.yaml`, which `docker compose` merges but an explicit `-f docker-compose.yaml` (as Coolify uses) ignores.
 
 For platform (Railway/Render/Coolify) service-per-app setups, point each service at its Dockerfile:
 

@@ -6,6 +6,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [0.3.3] - 2026-07-04
+
+### Fixed
+
+- Compose deploy failed with `Bind for 0.0.0.0:8000 failed: port is already
+  allocated` on shared hosts. `docker-compose.yaml` no longer publishes host ports;
+  services talk over the internal network (`backend`/`frontend` use `expose`), and
+  managed hosts (Coolify) route the domain to the `frontend` service via their proxy.
+
+### Added
+
+- `docker-compose.override.yaml` republishes host ports (postgres `5433`, backend
+  `8000`, frontend `3000`) for local development. `docker compose` merges it, but an
+  explicit `-f docker-compose.yaml` (as Coolify runs) ignores it — so the deploy
+  stays internal-only.
+
+### Changed
+
+- Renamed `docker-compose.yml` to `docker-compose.yaml` (Coolify's default name;
+  still recognized by the docker compose CLI).
+
 ## [0.3.2] - 2026-07-04
 
 Public-demo hardening: a lockable admin surface and live streaming that works

@@ -6,8 +6,7 @@ services:
       POSTGRES_DB: evoverse
       POSTGRES_USER: evoverse
       POSTGRES_PASSWORD: ${EVOVERSE_POSTGRES_PASSWORD:-evoverse}
-    ports:
-      - "${EVOVERSE_POSTGRES_PORT:-5433}:5432"
+    # Internal only; local dev publishes host ports via docker-compose.override.yaml.
     volumes:
       - evoverse-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -38,8 +37,10 @@ services:
     # Apply migrations, then serve the API.
     command: >
       sh -c "python -m app.persistence.migrations upgrade && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    ports:
-      - "${EVOVERSE_BACKEND_PORT:-8000}:8000"
+    # Internal only — the frontend reaches it at http://backend:8000. Publishing a
+    # host port conflicts on shared hosts; local dev uses the override file.
+    expose:
+      - "8000"
     restart: unless-stopped
 
   worker:
@@ -75,8 +76,10 @@ services:
     environment:
       # Server-side reads and BFF routes reach the backend over the compose network.
       EVOVERSE_API_URL: http://backend:8000
-    ports:
-      - "${EVOVERSE_FRONTEND_PORT:-3000}:3000"
+    # This is the public web service. On Coolify, assign the domain to `frontend`
+    # and its proxy routes to this exposed port (no host port publishing needed).
+    expose:
+      - "3000"
     restart: unless-stopped
 
 volumes:
