@@ -31,7 +31,10 @@ Alpha is now a living, time-travelable observatory rather than a data panel:
 
 **References** (see [`/resources`](frontend/content/resources.md)): orientation points, not endorsements or copied content — Conway's Game of Life & ConwayLife.com (cellular automata origin), NASA Astrobiology and Darwin's *On the Origin of Species* (biology/evolution), and the International Society for Artificial Life (current ALife research). Alpha deliberately combines cellular automata, artificial-life ecology, resource dynamics, event sourcing, snapshot comparison, and observer/catalyst interaction — less mathematically minimal than Life, more legible as a product.
 
-**Related writing:** Evoverse is referenced in the essay [God at the Interface: An Essay on Being, Nothingness, and the Evolutionary, Philological, and Cognitive Origins of Belief](https://medium.com/@eresicibora/aray%C3%BCzdeki-tanr%C4%B1-varl%C4%B1k-hi%C3%A7lik-ve-inanc%C4%B1n-evrimsel-filolojik-ve-bili%C5%9Fsel-k%C3%B6kenleri-%C3%BCzerine-bir-7c1ace03adea) by Bora ERESICI.
+**Related writing** by Bora ERESICI:
+
+- [Evoverse: Not Creating a World, but Witnessing One](https://medium.com/@eresicibora/evoverse-bir-d%C3%BCnyay%C4%B1-yaratmak-de%C4%9Fil-ona-tan%C4%B1kl%C4%B1k-etmek-b7be7bcf5f30) — on the observe-don't-command stance.
+- [God at the Interface: An Essay on Being, Nothingness, and the Evolutionary, Philological, and Cognitive Origins of Belief](https://medium.com/@eresicibora/aray%C3%BCzdeki-tanr%C4%B1-varl%C4%B1k-hi%C3%A7lik-ve-inanc%C4%B1n-evrimsel-filolojik-ve-bili%C5%9Fsel-k%C3%B6kenleri-%C3%BCzerine-bir-7c1ace03adea) — references Evoverse.
 
 ## Local Development
 

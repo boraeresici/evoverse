@@ -22,4 +22,5 @@ The design deliberately combines cellular automata, artificial-life ecology, res
 
 ## Related writing
 
+- [Evoverse: Not Creating a World, but Witnessing One](https://medium.com/@eresicibora/evoverse-bir-d%C3%BCnyay%C4%B1-yaratmak-de%C4%9Fil-ona-tan%C4%B1kl%C4%B1k-etmek-b7be7bcf5f30): Essay by Bora ERESICI on Evoverse's observe-don't-command stance.
 - [God at the Interface: An Essay on Being, Nothingness, and the Evolutionary, Philological, and Cognitive Origins of Belief](https://medium.com/@eresicibora/aray%C3%BCzdeki-tanr%C4%B1-varl%C4%B1k-hi%C3%A7lik-ve-inanc%C4%B1n-evrimsel-filolojik-ve-bili%C5%9Fsel-k%C3%B6kenleri-%C3%BCzerine-bir-7c1ace03adea): Essay by Bora ERESICI that references Evoverse.
