@@ -6,6 +6,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [0.3.5] - 2026-07-04
+
+### Fixed
+
+- Google sign-in redirected to the internal container host (e.g.
+  `https://0.0.0.0:3000/auth?status=signed-in`) instead of the public domain.
+  Behind a reverse proxy (Traefik/Cloudflare) `request.url` reflects the
+  internal origin, so the auth routes now build redirects and the OAuth
+  `redirect_uri` from a new `publicOrigin()` helper that reads the
+  `x-forwarded-proto`/`x-forwarded-host` (falling back to `host`) headers.
+  Session and OAuth-state cookies also derive their `secure` flag from the
+  forwarded scheme, so they are marked secure over the public HTTPS origin.
+
 ## [0.3.4] - 2026-07-04
 
 ### Fixed

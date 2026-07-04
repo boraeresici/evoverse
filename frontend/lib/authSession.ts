@@ -1,4 +1,21 @@
 import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
+
+/**
+ * The externally-visible origin. Behind a reverse proxy (Traefik/Cloudflare) the
+ * server sees an internal host (e.g. 0.0.0.0:3000), so auth redirects must be
+ * built from the forwarded headers instead of request.url.
+ */
+export function publicOrigin(request: NextRequest): string {
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const host =
+    request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+    request.headers.get("host")?.trim();
+  if (host) {
+    return `${proto || "https"}://${host}`;
+  }
+  return request.nextUrl.origin;
+}
 
 export const AUTH_SESSION_USER_COOKIE = "evoverse_session_user";
 export const AUTH_SESSION_PROVIDER_COOKIE = "evoverse_session_provider";

@@ -5,7 +5,8 @@ import {
   AUTH_SESSION_USER_COOKIE,
   getAuthRuntimeConfig,
   googlePayloadToUserId,
-  parseGoogleIdToken
+  parseGoogleIdToken,
+  publicOrigin
 } from "@/lib/authSession";
 
 type GoogleTokenResponse = {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     return redirectToAuth(request, "oauth-state-mismatch");
   }
 
-  const config = getAuthRuntimeConfig(request.nextUrl.origin);
+  const config = getAuthRuntimeConfig(publicOrigin(request));
   if (!config.googleReady) {
     return redirectToAuth(request, "google-runtime-missing");
   }
@@ -63,7 +64,9 @@ export async function GET(request: NextRequest) {
 }
 
 function redirectToAuth(request: NextRequest, status: string) {
-  return NextResponse.redirect(new URL(`/auth?status=${encodeURIComponent(status)}`, request.url));
+  return NextResponse.redirect(
+    new URL(`/auth?status=${encodeURIComponent(status)}`, publicOrigin(request))
+  );
 }
 
 function sessionCookieOptions(request: NextRequest) {
@@ -72,6 +75,6 @@ function sessionCookieOptions(request: NextRequest) {
     maxAge: 60 * 60 * 24 * 30,
     path: "/",
     sameSite: "lax" as const,
-    secure: request.nextUrl.protocol === "https:"
+    secure: publicOrigin(request).startsWith("https:")
   };
 }

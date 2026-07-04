@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AUTH_OAUTH_STATE_COOKIE, getAuthRuntimeConfig } from "@/lib/authSession";
+import { AUTH_OAUTH_STATE_COOKIE, getAuthRuntimeConfig, publicOrigin } from "@/lib/authSession";
 
 export async function GET(request: NextRequest) {
-  const config = getAuthRuntimeConfig(request.nextUrl.origin);
+  const origin = publicOrigin(request);
+  const config = getAuthRuntimeConfig(origin);
   if (!config.googleClientConfigured) {
-    return NextResponse.redirect(new URL("/auth?status=google-client-missing", request.url));
+    return NextResponse.redirect(new URL("/auth?status=google-client-missing", origin));
   }
 
   const state = crypto.randomUUID();
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     maxAge: 600,
     path: "/",
     sameSite: "lax",
-    secure: request.nextUrl.protocol === "https:"
+    secure: origin.startsWith("https:")
   });
   return response;
 }
