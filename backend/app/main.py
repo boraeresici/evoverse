@@ -106,6 +106,7 @@ store = AlphaStore(
     auth_google_client_id=settings.auth_google_client_id,
     bootstrap_admins=settings.auth_bootstrap_admins,
     bootstrap_catalysts=settings.auth_bootstrap_catalysts,
+    allow_local_admin=settings.allow_local_admin,
 )
 
 app = FastAPI(
@@ -119,7 +120,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=list(settings.cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

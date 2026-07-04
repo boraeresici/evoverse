@@ -75,6 +75,7 @@ class AlphaStore:
         auth_google_client_id: str | None = None,
         bootstrap_admins: tuple[str, ...] | None = None,
         bootstrap_catalysts: tuple[str, ...] | None = None,
+        allow_local_admin: bool = True,
     ) -> None:
         self._lock = RLock()
         self._seed = seed
@@ -85,7 +86,12 @@ class AlphaStore:
         self._auth_allow_local_fallback = auth_allow_local_fallback
         self._auth_trusted_header_required = auth_trusted_header_required
         self._auth_google_client_id = auth_google_client_id
-        self._bootstrap_admins = _bootstrap_ids(bootstrap_admins, fallback=LOCAL_ADMIN_ACTOR_ID)
+        # When local admin is disabled (e.g. a public demo), no id is bootstrapped
+        # as admin, so the local fallback identity has no admin rights.
+        self._bootstrap_admins = _bootstrap_ids(
+            bootstrap_admins,
+            fallback=LOCAL_ADMIN_ACTOR_ID if allow_local_admin else None,
+        )
         self._bootstrap_catalysts = _bootstrap_ids(bootstrap_catalysts, fallback=LOCAL_CATALYST_USER_ID)
         self._memory_catalyst_counts: dict[tuple[str, str, str], int] = {}
         self._memory_catalyst_action_logs: dict[str, dict] = {}
@@ -2318,9 +2324,11 @@ def _admin_actor_id(actor_id: str | None) -> str:
     return normalized
 
 
-def _bootstrap_ids(values: tuple[str, ...] | None, *, fallback: str) -> tuple[str, ...]:
+def _bootstrap_ids(values: tuple[str, ...] | None, *, fallback: str | None) -> tuple[str, ...]:
     normalized = tuple(dict.fromkeys(item.strip() for item in (values or ()) if item.strip()))
-    return normalized or (fallback,)
+    if normalized:
+        return normalized
+    return (fallback,) if fallback else ()
 
 
 def _admin_ticks(ticks: int) -> int:

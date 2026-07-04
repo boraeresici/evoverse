@@ -170,6 +170,21 @@ def test_chronicle_events_expose_payload_schema_contract() -> None:
     assert event["payloadSchemaVersion"] == 1
 
 
+def test_local_admin_lock_via_flag() -> None:
+    from app.services.alpha_store import AdminPermissionError
+
+    locked = AlphaStore(seed=4211, boot_ticks=1, allow_local_admin=False)
+    try:
+        locked.ensure_admin_permission(actor_id="local-admin")
+        raise AssertionError("local-admin should be denied when allow_local_admin is False")
+    except AdminPermissionError:
+        pass
+
+    allowed = AlphaStore(seed=4211, boot_ticks=1, allow_local_admin=True)
+    # Should not raise.
+    allowed.ensure_admin_permission(actor_id="local-admin")
+
+
 def test_event_stream_cursor_contract() -> None:
     local_store = AlphaStore(seed=4211, boot_ticks=1)
     initial = local_store.event_stream(limit=5)

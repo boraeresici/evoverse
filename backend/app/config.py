@@ -37,6 +37,8 @@ class Settings:
     worker_max_steps: int | None
     allow_destructive_ops: bool
     worker_stale_seconds: float
+    allow_local_admin: bool
+    cors_origins: tuple[str, ...]
 
     @property
     def use_postgres(self) -> bool:
@@ -70,6 +72,12 @@ def get_settings() -> Settings:
             os.getenv("EVOVERSE_ALLOW_DESTRUCTIVE_OPS", "true" if env == "local" else "false")
         ),
         worker_stale_seconds=float(os.getenv("EVOVERSE_WORKER_STALE_SECONDS", "30")),
+        allow_local_admin=_as_bool(
+            os.getenv("EVOVERSE_ALLOW_LOCAL_ADMIN", "true" if env == "local" else "false")
+        ),
+        cors_origins=_as_csv(
+            os.getenv("EVOVERSE_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+        ),
     )
 
 

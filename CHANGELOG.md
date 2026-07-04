@@ -6,6 +6,28 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Active sprint tracking lives in `sıra.md`; `docs/` and `prd.md` are product references.
 
+## [0.3.2] - 2026-07-04
+
+Public-demo hardening: a lockable admin surface and live streaming that works
+without exposing the backend to the browser.
+
+### Added
+
+- **`EVOVERSE_ALLOW_LOCAL_ADMIN`** — when `false` (default outside `local`, and in
+  the demo compose), the local fallback identity holds no admin role: `/admin/config`
+  is gated and every admin write returns `403`, while observer/catalyst still work.
+- **Same-origin live stream** — the browser now connects to `/api/events/stream`
+  and `/api/chronicle` (BFF proxies) instead of the backend directly, so live
+  chronicle streaming works with the backend kept internal (no CORS, no public API
+  host). `LiveChronicle` no longer uses `NEXT_PUBLIC_API_URL`.
+- **`EVOVERSE_CORS_ORIGINS`** — the API CORS allowlist is now env-configurable
+  (still defaults to localhost); only needed if a browser calls the API cross-origin.
+
+### Changed
+
+- The demo `docker-compose.yml` locks admin and destructive ops by default while
+  keeping observer/catalyst interaction open.
+
 ## [0.3.1] - 2026-07-04
 
 Deployment scaffolding — the full-stack app was failing to deploy because the

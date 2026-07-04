@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EventList } from "@/components/EventList";
 import type { ChronicleData, ChronicleEvent } from "@/lib/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const MAX_EVENTS = 100;
 const POLL_INTERVAL_MS = 10_000;
 
@@ -61,9 +60,7 @@ export function LiveChronicle({ filters = {}, initialEvents, timeFilter }: LiveC
       params.set("lastEventId", latestEventId.current);
     }
     const query = params.toString();
-    const source = new EventSource(
-      `${API_URL}/universes/alpha/events/stream${query ? `?${query}` : ""}`
-    );
+    const source = new EventSource(`/api/events/stream${query ? `?${query}` : ""}`);
 
     source.addEventListener("stream_status", () => {
       if (!closed) {
@@ -124,7 +121,7 @@ export function LiveChronicle({ filters = {}, initialEvents, timeFilter }: LiveC
 async function fetchChronicle(timeFilter: string): Promise<ChronicleEvent[] | null> {
   try {
     const response = await fetch(
-      `${API_URL}/universes/alpha/chronicle?timeFilter=${encodeURIComponent(timeFilter)}`,
+      `/api/chronicle?timeFilter=${encodeURIComponent(timeFilter)}`,
       { cache: "no-store" }
     );
     if (!response.ok) {
