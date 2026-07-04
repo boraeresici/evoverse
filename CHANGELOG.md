@@ -4,7 +4,7 @@ All notable changes to Evoverse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Active sprint tracking lives in `sıra.md`; `docs/` and `prd.md` are product references.
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
 ## [0.3.2] - 2026-07-04
 
@@ -25,7 +25,7 @@ without exposing the backend to the browser.
 
 ### Changed
 
-- The demo `docker-compose.yml` locks admin and destructive ops by default while
+- The demo `docker-compose.yaml` locks admin and destructive ops by default while
   keeping observer/catalyst interaction open.
 
 ## [0.3.1] - 2026-07-04
@@ -37,7 +37,7 @@ monorepo root was being built as a single Node app.
 
 - `frontend/Dockerfile` (Next.js standalone) and `backend/Dockerfile` (FastAPI;
   reused for the worker), plus `.dockerignore` files and `backend/requirements.txt`.
-- Full-stack `docker-compose.yml` (postgres + backend + worker + frontend) for a
+- Full-stack `docker-compose.yaml` (postgres + backend + worker + frontend) for a
   one-command deploy on Docker-Compose hosts.
 - Frontend `start` script, `output: "standalone"` in `next.config.mjs`, and a
   `node >= 20` engines hint.
@@ -45,7 +45,7 @@ monorepo root was being built as a single Node app.
 
 ### Changed
 
-- `docker-compose.yml` postgres no longer mounts migrations as init scripts; the
+- `docker-compose.yaml` postgres no longer mounts migrations as init scripts; the
   migration runner (`make migrate` / backend start command) is the single path,
   avoiding double-apply.
 
