@@ -2,6 +2,8 @@
 
 Evoverse is a persistent artificial life observatory. The product starts with Alpha: a seeded universe where regions, species, populations, and chronicle events evolve through a deterministic tick engine.
 
+🌐 <a href="https://evoverse.studiobinary.co" target="_blank" rel="noreferrer"><b>Live demo — evoverse.studiobinary.co</b></a> (test environment)
+
 **Version:** 0.3.0 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
 
 ## What's Inside (0.2.0)

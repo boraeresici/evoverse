@@ -5471,3 +5471,77 @@ p {
     transition: none;
   }
 }
+
+/* Footer: site url link + GitHub repo link */
+.footer-brand a + a {
+  color: #52605b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.footer-repo {
+  align-items: center;
+  color: var(--ink) !important;
+  display: inline-flex;
+  gap: 5px;
+}
+
+/* Info pages: article + sticky large statement (fills the empty right column) */
+.info-split {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.64fr);
+}
+
+.info-split .markdown-article {
+  max-width: none;
+  padding: 22px 22px 22px 0;
+}
+
+.info-statement {
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding: 6px 0 6px 24px;
+  position: sticky;
+  top: 84px;
+}
+
+.info-statement h2 {
+  font-size: clamp(30px, 3.4vw, 50px);
+  line-height: 1;
+  margin: 0;
+}
+
+.info-statement p {
+  color: #3d4844;
+  font-size: 16px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 420px;
+}
+
+.info-statement .primary-action {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+  .info-split {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .info-split .markdown-article {
+    padding: 22px;
+  }
+
+  .info-statement {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 18px 0 0;
+    position: static;
+    top: auto;
+  }
+}
