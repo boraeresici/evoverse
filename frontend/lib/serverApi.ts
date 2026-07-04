@@ -1,7 +1,8 @@
 import { getTrustedSessionHeaders } from "./authSession";
 
+// `||` (not `??`) so an empty NEXT_PUBLIC_API_URL falls through to the default.
 const SERVER_API_URL =
-  process.env.EVOVERSE_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  process.env.EVOVERSE_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type BackendForwardInit = {
   method: string;

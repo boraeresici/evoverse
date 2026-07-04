@@ -19,7 +19,10 @@ import type {
 import { getTrustedSessionHeaders } from "./authSession";
 import { OBSERVER_USER_ID } from "./identity";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// Server-side reads: prefer the server-only backend origin, then the public one.
+// `||` (not `??`) so an empty string falls through to the next value.
+const API_URL =
+  process.env.EVOVERSE_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 export { ADMIN_ACTOR_ID, CATALYST_USER_ID, OBSERVER_USER_ID } from "./identity";
 
 async function request<T>(path: string): Promise<T> {

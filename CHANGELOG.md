@@ -6,6 +6,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [0.3.4] - 2026-07-04
+
+### Fixed
+
+- Deployed pages showed "Alpha signal is stabilizing" (empty states) even though
+  the backend was reachable and serving data. Server-side reads in `lib/api.ts`
+  used `NEXT_PUBLIC_API_URL` (empty in production, since the browser talks
+  same-origin), so they fetched a relative URL and failed. They now prefer the
+  server-only `EVOVERSE_API_URL` (like the BFF routes), using `||` so an empty
+  value falls through to the default.
+
 ## [0.3.3] - 2026-07-04
 
 ### Fixed
