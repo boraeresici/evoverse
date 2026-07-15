@@ -201,23 +201,7 @@ class AlphaStateRepository:
                 )
                 for row in population_rows
             },
-            events=[
-                Event(
-                    id=row["id"],
-                    universe_id=row["universe_id"],
-                    region_id=row["region_id"],
-                    species_id=row["species_id"],
-                    event_type=EventType(row["event_type"]),
-                    severity=int(row["severity"]),
-                    world_age=int(row["world_age"]),
-                    tick=int(row["tick"]),
-                    title=row["title"],
-                    summary=row["summary"],
-                    payload=row["payload"] or {},
-                    created_at=str(row["created_at"]),
-                )
-                for row in event_rows
-            ],
+            events=[_row_to_event(row) for row in event_rows],
             catalyst_actions=[
                 CatalystAction(
                     id=row["id"],
@@ -240,6 +224,81 @@ class AlphaStateRepository:
             ),
         )
         return state
+
+    def events_page(
+        self,
+        *,
+        universe_id: str = "alpha",
+        limit: int,
+        offset: int = 0,
+        cursor: str | None = None,
+        region_id: str | None = None,
+        species_id: str | None = None,
+        min_world_age: int | None = None,
+    ) -> dict:
+        """Keyset (cursor) pagination over the event log, straight from the DB.
+
+        Ordered newest-first by ``(tick, id)`` — the strict total order backed by
+        the ``idx_events_*_tick`` indexes. A ``cursor`` walks arbitrarily deep at
+        constant per-page cost (``WHERE (tick, id) < (cursor)``); without one we
+        fall back to ``OFFSET`` so the legacy offset contract still works to any
+        depth (just slower deep). Returns domain ``Event`` objects so the caller
+        serializes them exactly like in-memory events.
+        """
+        limit = max(1, min(limit, 100))
+        conditions = [events.c.universe_id == universe_id]
+        if region_id is not None:
+            conditions.append(events.c.region_id == region_id)
+        if species_id is not None:
+            conditions.append(events.c.species_id == species_id)
+        if min_world_age is not None:
+            conditions.append(events.c.world_age >= min_world_age)
+
+        decoded = decode_event_cursor(cursor)
+        with self.engine.begin() as connection:
+            total = connection.execute(
+                select(func.count()).select_from(events).where(*conditions)
+            ).scalar() or 0
+
+            query = select(events).where(*conditions)
+            effective_offset = 0
+            if decoded is not None:
+                cursor_tick, cursor_id = decoded
+                query = query.where(
+                    or_(
+                        events.c.tick < cursor_tick,
+                        and_(events.c.tick == cursor_tick, events.c.id < cursor_id),
+                    )
+                )
+            else:
+                effective_offset = max(0, offset)
+            query = query.order_by(events.c.tick.desc(), events.c.id.desc())
+            if effective_offset:
+                query = query.offset(effective_offset)
+            # One extra row tells us whether another page exists without a re-count.
+            rows = connection.execute(query.limit(limit + 1)).mappings().all()
+
+        has_more = len(rows) > limit
+        items = [_row_to_event(row) for row in rows[:limit]]
+        next_cursor = (
+            encode_event_cursor(items[-1].tick, items[-1].id)
+            if has_more and items
+            else None
+        )
+        next_offset = (
+            effective_offset + limit if decoded is None and has_more else None
+        )
+        return {
+            "items": items,
+            "pagination": {
+                "limit": limit,
+                "offset": effective_offset,
+                "total": int(total),
+                "hasMore": has_more,
+                "nextOffset": next_offset,
+                "nextCursor": next_cursor,
+            },
+        }
 
     def save_alpha(
         self,
@@ -1339,6 +1398,47 @@ class AlphaStateRepository:
 
 def create_alpha_repository(database_url: str) -> AlphaStateRepository:
     return AlphaStateRepository(database_url, create_schema=True)
+
+
+def _row_to_event(row) -> Event:
+    """Build a domain ``Event`` from an events-table row mapping.
+
+    Shared by ``load_alpha`` and ``events_page`` so both apply the same payload
+    normalization (via ``Event.__post_init__``) and column coercion.
+    """
+    return Event(
+        id=row["id"],
+        universe_id=row["universe_id"],
+        region_id=row["region_id"],
+        species_id=row["species_id"],
+        event_type=EventType(row["event_type"]),
+        severity=int(row["severity"]),
+        world_age=int(row["world_age"]),
+        tick=int(row["tick"]),
+        title=row["title"],
+        summary=row["summary"],
+        payload=row["payload"] or {},
+        created_at=str(row["created_at"]),
+    )
+
+
+def encode_event_cursor(tick: int, event_id: str) -> str:
+    """Opaque keyset cursor for the ``(tick, id)`` total order."""
+    return f"{tick}:{event_id}"
+
+
+def decode_event_cursor(cursor: str | None) -> tuple[int, str] | None:
+    """Parse a cursor back to ``(tick, id)``; ``None`` for missing/malformed input."""
+    if not cursor:
+        return None
+    raw = cursor.strip()
+    tick_part, _, event_id = raw.partition(":")
+    if not event_id:
+        return None
+    try:
+        return int(tick_part), event_id
+    except ValueError:
+        return None
 
 
 def _unpersisted_events(connection, universe_id: str, state_events: list) -> list:

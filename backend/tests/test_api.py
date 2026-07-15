@@ -512,7 +512,12 @@ def test_species_forecast_not_found_contract() -> None:
 
 def test_region_and_species_event_pagination_contracts() -> None:
     landing = client.get("/universes/alpha/landing").json()
-    region_id = landing["featuredEvents"][0]["regionId"]
+    # Some event types (e.g. era_advanced) carry no region, so pick the first
+    # featured event that has one; fall back to a region that always seeds.
+    region_id = next(
+        (event["regionId"] for event in landing["featuredEvents"] if event["regionId"]),
+        "region-001",
+    )
     species_id = client.get("/species").json()["species"][0]["id"]
 
     region_events = client.get(f"/regions/{region_id}/events?limit=2&offset=0")

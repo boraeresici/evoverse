@@ -14,7 +14,7 @@ from app.persistence.migrations import (
 def test_discovers_initial_sql_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 10
+    assert len(migrations) == 11
     assert migrations[0].version == "001"
     assert migrations[0].name == "initial_schema"
     assert len(migrations[0].checksum) == 64
@@ -46,6 +46,9 @@ def test_discovers_initial_sql_migration() -> None:
     assert migrations[9].version == "010"
     assert migrations[9].name == "species_chirality"
     assert "ADD COLUMN IF NOT EXISTS chirality" in migrations[9].sql
+    assert migrations[10].version == "011"
+    assert migrations[10].name == "event_feed_keyset_indexes"
+    assert "idx_events_region_tick" in migrations[10].sql
 
 
 def test_upgrade_applies_pending_sql_migrations(tmp_path) -> None:

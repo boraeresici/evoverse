@@ -128,6 +128,10 @@ class ChiralityRules:
     heterochiral_growth_penalty: float = 0.35
     heterochiral_lethal_load: float = 0.85
     heterochiral_lethal_decline: float = 0.5
+    # Two-tier Era gate (§6.4): homochirality earns Stabilization (chemistry → life);
+    # homochirality *and* a mind-locked lineage earn Intelligence (life → mind).
+    life_gate_index: float = 0.8
+    mind_gate_index: float = 0.92
 
 
 @dataclass(frozen=True)

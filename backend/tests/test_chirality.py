@@ -1,8 +1,38 @@
 from __future__ import annotations
 
-from app.domain import EventType
+from app.domain import BiomeType, Era, EventType, Region, Species, Traits
 from app.simulation import DEFAULT_SIMULATION_RULES, SimulationEngine, seed_alpha
 from app.simulation.benchmark import determinism_signature
+
+
+def _region(ee: float, locked: bool = True) -> Region:
+    return Region(
+        id="region-001",
+        universe_id="alpha",
+        x=0,
+        y=0,
+        biome_type=BiomeType.BASIN,
+        energy_level=0.6,
+        resource_density=0.6,
+        stability=0.6,
+        chirality_ee=ee,
+        chirality_locked=locked,
+    )
+
+
+def _species(chirality: int) -> Species:
+    return Species(
+        id="sp-0001",
+        universe_id="alpha",
+        name="THERA",
+        origin_region_id="region-001",
+        emerged_at_world_age=0,
+        status=None,  # unused by the mismatch helper
+        generation=1,
+        parent_species_id=None,
+        traits=Traits(0.5, 0.5, 0.5, 0.5, 0.5),
+        chirality=chirality,
+    )
 
 
 def test_genesis_starts_near_racemic() -> None:
@@ -148,3 +178,88 @@ def test_heterochiral_load_penalizes_growth() -> None:
         assert 0.0 <= species.heterochiral_load <= 1.0
     # The lethal knob is a positive decline fraction (applied as a growth floor).
     assert rules.chirality.heterochiral_lethal_decline > 0
+
+
+def test_heterochiral_mismatch_only_bites_committed_opposite_hand() -> None:
+    engine = SimulationEngine(seed=4211)
+
+    # Same hand as the region → no mismatch.
+    assert engine._heterochiral_mismatch(_species(1), _region(1.0)) == 0.0
+    # Uncommitted lineage (hand 0) → no mismatch, it just hasn't specialized.
+    assert engine._heterochiral_mismatch(_species(0), _region(1.0)) == 0.0
+    # Racemic region → no mismatch regardless of hand.
+    assert engine._heterochiral_mismatch(_species(1), _region(0.0, locked=False)) == 0.0
+    # Committed opposite hand in a locked region → full mismatch = |ee|.
+    assert engine._heterochiral_mismatch(_species(-1), _region(1.0)) == 1.0
+    # Partial ee → proportional mismatch.
+    assert engine._heterochiral_mismatch(_species(-1), _region(0.4, locked=False)) == 0.4
+
+
+# --- §11.3: two-tier Era gate ------------------------------------------------
+
+
+def test_stabilization_era_is_earned_by_homochirality() -> None:
+    life_gate = DEFAULT_SIMULATION_RULES.chirality.life_gate_index
+    state = seed_alpha(seed=4211)
+    assert state.universe.current_era == Era.EXPANSION
+    engine = SimulationEngine(seed=4211)
+
+    # Below the life gate, the universe has not yet earned Stabilization.
+    engine.advance(state, ticks=40)
+    assert state.universe.homochirality_index < life_gate
+    assert state.universe.current_era == Era.EXPANSION
+
+    # Once homochirality crosses the gate it advances — and announces it once.
+    engine.advance(state, ticks=260)
+    assert state.universe.homochirality_index >= life_gate
+    assert state.universe.current_era == Era.STABILIZATION
+    to_stab = [
+        e
+        for e in state.events
+        if e.event_type == EventType.ERA_ADVANCED
+        and e.payload.get("to_era") == Era.STABILIZATION.value
+    ]
+    assert len(to_stab) == 1
+    assert to_stab[0].payload["from_era"] == Era.EXPANSION.value
+
+
+def test_intelligence_era_is_unreachable_in_t1() -> None:
+    mind_gate = DEFAULT_SIMULATION_RULES.chirality.mind_gate_index
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211).advance(state, ticks=1200)
+
+    # Full homochirality is reached, but no lineage locks a mind in T1, so the
+    # universe never claims the Intelligence Era.
+    assert state.universe.homochirality_index >= mind_gate
+    assert not any(species.mind_locked for species in state.species.values())
+    assert state.universe.current_era == Era.STABILIZATION
+    assert not any(
+        e.event_type == EventType.ERA_ADVANCED
+        and e.payload.get("to_era") == Era.INTELLIGENCE.value
+        for e in state.events
+    )
+
+
+def test_intelligence_era_is_earned_once_a_mind_locks() -> None:
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    engine.advance(state, ticks=300)
+    assert state.universe.current_era == Era.STABILIZATION
+
+    # Stand in for the future T2 cognitive tier latching a lineage's world-model.
+    next(iter(state.species.values())).mind_locked = True
+    engine.advance(state, ticks=1)
+    assert state.universe.current_era == Era.INTELLIGENCE
+
+
+def test_era_never_regresses() -> None:
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    order = [Era.GENESIS, Era.EXPANSION, Era.STABILIZATION, Era.INTELLIGENCE]
+
+    ranks: list[int] = []
+    for _ in range(30):
+        engine.advance(state, ticks=40)
+        ranks.append(order.index(state.universe.current_era))
+
+    assert ranks == sorted(ranks)  # monotonic, never falls back

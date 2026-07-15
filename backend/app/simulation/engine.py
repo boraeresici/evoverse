@@ -7,6 +7,7 @@ from app.domain import (
     AlphaState,
     CatalystAction,
     CatalystActionType,
+    Era,
     EventType,
     Population,
     Region,
@@ -24,6 +25,15 @@ from app.simulation.seeder import SPECIES_NAMES, _recalculate_universe_chirality
 
 def _hand_word(hand_sign: int) -> str:
     return "right" if hand_sign >= 0 else "left"
+
+
+# Eras are ordered achievements; the gate only ever moves a universe forward.
+_ERA_RANK: dict[Era, int] = {
+    Era.GENESIS: 0,
+    Era.EXPANSION: 1,
+    Era.STABILIZATION: 2,
+    Era.INTELLIGENCE: 3,
+}
 
 
 class SimulationEngine:
@@ -50,6 +60,7 @@ class SimulationEngine:
             self._update_species_statuses(state)
             self._recalculate_dominant_species(state)
             self._update_universe_stability(state)
+            self._advance_era(state)
             self._expire_catalyst_actions(state)
         return state
 
@@ -618,6 +629,45 @@ class SimulationEngine:
             ),
             3,
         )
+
+    def _advance_era(self, state: AlphaState) -> None:
+        """Two-tier maturity gate (§6.4). Eras are earned, never seeded or lost:
+
+        * Genesis/Expansion → **Stabilization** once the universe's homochirality
+          index crosses ``life_gate_index`` (T1: chemistry becomes life).
+        * Stabilization → **Intelligence** once homochirality crosses
+          ``mind_gate_index`` *and* some lineage has ``mind_locked`` (T2). Because
+          no lineage locks a mind until the cognitive tier ships, Intelligence
+          stays unreachable here — earned, not given.
+        """
+        rules = self.rules.chirality
+        idx = state.universe.homochirality_index
+        current = state.universe.current_era
+        target = current
+
+        if _ERA_RANK[current] < _ERA_RANK[Era.STABILIZATION] and idx >= rules.life_gate_index:
+            target = Era.STABILIZATION
+        if (
+            _ERA_RANK[target] < _ERA_RANK[Era.INTELLIGENCE]
+            and idx >= rules.mind_gate_index
+            and any(species.mind_locked for species in state.species.values())
+        ):
+            target = Era.INTELLIGENCE
+
+        if _ERA_RANK[target] > _ERA_RANK[current]:
+            state.universe.current_era = target
+            title, summary = event_templates.era_advanced(current, target, idx)
+            state.add_event(
+                EventType.ERA_ADVANCED,
+                title,
+                summary,
+                severity=5,
+                payload={
+                    "from_era": current.value,
+                    "to_era": target.value,
+                    "homochirality_index": round(idx, 4),
+                },
+            )
 
     def _expire_catalyst_actions(self, state: AlphaState) -> None:
         state.catalyst_actions = [

@@ -18,10 +18,12 @@ Consumers should branch on `schemaVersion` and `eventType`. New optional fields 
 | --- | --- | --- | --- |
 | `species_emerged` | `generation` | `parent_species_id` | New observable species branch. |
 | `species_declined` | `decline_percent` |  | Population drop marker. |
-| `mutation_detected` |  | `child_species_id`, `trait_deltas` | Bootstrap mutation signals may not create a child species. |
+| `mutation_detected` |  | `child_species_id`, `trait_deltas`, `chiral_flip` | Bootstrap mutation signals may not create a child species. `chiral_flip` marks a rare, usually lethal handedness flip. |
 | `region_resource_shift` | `direction` | `from`, `to` | `direction` is `rise` or `fall`; bootstrap events may omit numeric bounds. |
 | `region_collapse` |  |  | Collapse state is available through the event row's region reference. |
 | `catalyst_action` | `action_type`, `action_id`, `user_id` | `day_key` | `day_key` is added by the store for quota and audit correlation. |
+| `symmetry_break` | `scope` | `hand`, `hand_sign`, `homochirality_index` | `scope` is `region` (first molecular break), `lineage` (a species commits a hand), or `universe` (full homochirality). Universe scope carries no `regionId`. See `docs/CHIRALITY_AND_MIND.md`. |
+| `era_advanced` | `from_era`, `to_era` | `homochirality_index` | The universe crossed a maturity gate. Carries no `regionId`. See `docs/CHIRALITY_AND_MIND.md` §6.4. |
 
 ## API Shape
 

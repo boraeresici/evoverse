@@ -39,6 +39,7 @@ class EventType(StrEnum):
     REGION_COLLAPSE = "region_collapse"
     CATALYST_ACTION = "catalyst_action"
     SYMMETRY_BREAK = "symmetry_break"
+    ERA_ADVANCED = "era_advanced"
 
 
 class CatalystActionType(StrEnum):
@@ -139,6 +140,9 @@ class Species:
     # the 0..1 mismatch burden used for selection. See docs/CHIRALITY_AND_MIND.md §6.2–6.3.
     chirality: int = 0
     heterochiral_load: float = 0.0
+    # Cognitive homochirality (T2, not yet driven). The Intelligence-Era gate reads
+    # this, so it stays unreachable until the cognitive tier sets it. See §6.4–6.5.
+    mind_locked: bool = False
 
 
 @dataclass(slots=True)

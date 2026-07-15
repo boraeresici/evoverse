@@ -1,11 +1,15 @@
 # Evoverse — Chirality & Mind
 
-> **Status:** partially implemented. The **T1 slice** (§11 step 1) — the region/
-> universe chirality field, the bifurcation + avalanche tick rule, `ChiralityRules`,
-> and `homochirality_index` on the API and in persistence — is **built and covered by
-> determinism tests** (`backend/tests/test_chirality.py`). Inheritance/selection, the
-> Era gate, the Organism Lens, and the cognitive tier (T2) remain design-only. This
-> document is the spec; each remaining slice ships only when wired in and tested.
+> **Status:** partially implemented. **T1 (§11 steps 1–3) is built and tested**
+> (`backend/tests/test_chirality.py`): the region/universe chirality field, the
+> bifurcation + avalanche tick rule, `ChiralityRules`, and `homochirality_index`
+> (step 1); one-way lineage inheritance, heterochiral selection, and the
+> `SYMMETRY_BREAK` event (step 2); and the two-tier Era gate with the `ERA_ADVANCED`
+> event (step 3). All surfaced on the API and persisted. The Organism Lens (step 4)
+> and the cognitive tier / T2 (step 5) remain design-only — including the
+> `Species.mind_locked` flag, which exists and gates Intelligence but is never set
+> until T2. This document is the spec; each remaining slice ships only when wired
+> in and tested.
 
 This is a design spec, not an empirical claim about biology. Evoverse is an
 observatory and a modeling artwork; its "rightness" is measured by internal
@@ -257,21 +261,25 @@ Net effect: species are driven to migrate toward regions of their own hand, or d
 A flipped-hand mutant is almost always lethal — exactly Öztürk's point that mixed
 chirality cannot store heritable information.
 
-### 6.4 Two-tier Era gate
+### 6.4 Two-tier Era gate — *implemented*
 
-Today `current_era` is set once to `Era.EXPANSION` in
-[`seeder.py`](../backend/app/simulation/seeder.py) and never advanced. Add an era-
-progression rule driven by the maturity metric:
+Previously `current_era` was set once to `Era.EXPANSION` in
+[`seeder.py`](../backend/app/simulation/seeder.py) and never advanced. `_advance_era`
+now runs each tick, driven by the maturity metric:
 
 ```
 idx = universe.homochirality_index
-if era in {GENESIS, EXPANSION} and idx >= life_gate_index:
+if rank(era) < rank(STABILIZATION) and idx >= life_gate_index:
     era = STABILIZATION                    # T1 achieved: chemistry -> life
-if era == STABILIZATION and idx >= mind_gate_index and any lineage mind_locked:
+if rank(era) < rank(INTELLIGENCE) and idx >= mind_gate_index and any lineage mind_locked:
     era = INTELLIGENCE                      # T2 achieved: life -> mind
 ```
 
-So **maturity is homochirality**, and the Intelligence Era is *earned*, not seeded.
+Progression is **monotonic** (an era is never lost — locked ee keeps the index from
+falling) and each transition emits one `ERA_ADVANCED` event. So **maturity is
+homochirality**, and the Intelligence Era is *earned*, not seeded — it stays
+unreachable until the T2 tier (§6.5) sets `Species.mind_locked`. On the base seed,
+Stabilization is earned around tick 66 (index ≥ `life_gate_index` = 0.80).
 
 ### 6.5 Cognitive homochirality (T2)
 
@@ -302,9 +310,15 @@ be wrong about the world. Same bifurcation as §6.1, one tier up.
   region's `chirality_ee` toward a chosen hand (bounded, daily-limited, like the
   existing pulses). It is the *only* handle on symmetry breaking; observers nudge,
   the simulation decides. See [`docs/CATALYST_API.md`](CATALYST_API.md).
-- **New event `SYMMETRY_BREAK`** (`EventType`, severity 5): emitted the first time a
-  region or lineage latches (`chirality_locked` / `mind_locked`). A rare lethal
-  `chiral flip` is a `MUTATION_DETECTED` variant. Payload schema goes in
+- **`SYMMETRY_BREAK` event** (`EventType`) — *implemented (T1)*. Fires on three
+  scoped transitions, carried in `payload.scope`: `"region"` (severity 4) for the
+  universe's **first** molecular break (not every region — that would flood the
+  chronicle); `"lineage"` (severity 3) each time a species commits a hand; and
+  `"universe"` (severity 5, once) when every viable region has latched. Payload also
+  carries `hand`/`hand_sign` (and `homochirality_index` for the universe scope). A
+  rare lethal `chiral flip` rides the existing `MUTATION_DETECTED` event with a
+  `chiral_flip: true` payload flag (selection culls it — no separate event needed).
+  Contracts live in `event_payloads.py`; see also
   [`docs/EVENT_PAYLOAD_SCHEMAS.md`](EVENT_PAYLOAD_SCHEMAS.md).
 
 ---
@@ -374,7 +388,14 @@ keep the "it validates us" language out. Convergence is a compass, not a certifi
    `ChiralityRules` + `homochirality_index` on the API and in persistence
    (migration `008_chirality_field.sql`). Determinism covered in
    `backend/tests/test_chirality.py` and the benchmark signature.
-2. **Inheritance + selection (§6.2–6.3)** and the `SYMMETRY_BREAK` event.
-3. **Era gate (§6.4)** — make Stabilization/Intelligence earned.
+2. **Inheritance + selection (§6.2–6.3) + `SYMMETRY_BREAK` event — DONE:** one-way
+   `Species.chirality` adoption/inheritance with a lethal chiral-flip mutation,
+   heterochiral growth/lethal selection, and scoped symmetry-break events. On the API
+   (`chirality`, `heterochiralLoad`) and persisted (migration
+   `010_species_chirality.sql`). Covered in `backend/tests/test_chirality.py`.
+3. **Era gate (§6.4) — DONE:** `_advance_era` promotes Expansion → Stabilization
+   (homochirality) and Stabilization → Intelligence (homochirality + a mind-locked
+   lineage, so unreachable until T2), monotonically, with an `ERA_ADVANCED` event.
+   `current_era` was already persisted. Covered in `backend/tests/test_chirality.py`.
 4. **Organism Lens** (three.js) reading the maturity metric (§8).
 5. **T2 cognitive tier (§6.5)** + the Lens's world-model mode.

@@ -391,8 +391,11 @@ def get_alpha_chronicle(
     time_filter: str = Query(default="all", alias="timeFilter"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None),
 ) -> dict:
-    return store.chronicle(time_filter=time_filter, limit=limit, offset=offset)
+    return store.chronicle(
+        time_filter=time_filter, limit=limit, offset=offset, cursor=cursor
+    )
 
 
 @app.get("/universes/alpha/events/stream")
@@ -700,8 +703,9 @@ def get_region_events(
     region_id: str,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None),
 ) -> dict:
-    events = store.region_events(region_id, limit=limit, offset=offset)
+    events = store.region_events(region_id, limit=limit, offset=offset, cursor=cursor)
     if events is None:
         raise HTTPException(status_code=404, detail="Region not found")
     return events
@@ -733,8 +737,9 @@ def get_species_events(
     species_id: str,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None),
 ) -> dict:
-    events = store.species_events(species_id, limit=limit, offset=offset)
+    events = store.species_events(species_id, limit=limit, offset=offset, cursor=cursor)
     if events is None:
         raise HTTPException(status_code=404, detail="Species not found")
     return events

@@ -10,6 +10,17 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ### Added
 
+- **Keyset (cursor) pagination for event feeds.** The chronicle, region, and
+  species event feeds now page straight from the DB via a `(tick, id)` keyset
+  instead of the in-memory (tail-capped) list, so they scroll arbitrarily deep
+  (years of history) at constant per-page cost. New `AlphaStateRepository.events_page`,
+  optional `cursor` on the `chronicle` / `region_events` / `species_events` store
+  methods and their endpoints, and a `pagination.nextCursor` field added alongside
+  the existing `hasMore` / `nextOffset` / `total` (additive — offset clients keep
+  working). Backed by `(region_id, tick, id)` / `(species_id, tick, id)` indexes
+  (`migrations/011_event_feed_keyset_indexes.sql`). Table partitioning for
+  millions-of-rows scale is deferred to the backlog. See
+  [`docs/PERFORMANCE_LOOP.md`](docs/PERFORMANCE_LOOP.md).
 - **Correlation-length & organism-pattern diagnostics** (design
   [`docs/CORRELATION_AND_PATTERNS.md`](docs/CORRELATION_AND_PATTERNS.md)). A read-only,
   deterministic measurement layer in `backend/app/simulation/diagnostics.py`, wired
@@ -43,6 +54,17 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   `heterochiralGrowthPenalty`, `heterochiralLethalLoad`, `heterochiralLethalDecline`.
   Rule loading now also tolerates configs predating individual rule fields (not
   just whole sections), falling back to field defaults.
+- **Two-tier Era gate — eras are now earned, not seeded** (design §6.4). The
+  universe advances Expansion → **Stabilization** once its `homochirality_index`
+  crosses `life_gate_index` (chemistry → life), and Stabilization → **Intelligence**
+  once it crosses `mind_gate_index` *and* a lineage has `mind_locked` (life → mind).
+  Because no lineage locks a mind until the cognitive tier (T2) ships, Intelligence
+  stays genuinely unreachable for now. Progression is monotonic (an era is never
+  lost) and announced once via a new `ERA_ADVANCED` chronicle event. New editable
+  `ChiralityRules` knobs `lifeGateIndex`/`mindGateIndex`; `current_era` was already
+  persisted, so no migration was needed. Covered by `backend/tests/test_chirality.py`.
+  Featured-event and pagination consumers already tolerate the universe-scope events
+  (`era_advanced`, universe `symmetry_break`) that carry no `regionId`.
 
 ### Fixed
 

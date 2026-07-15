@@ -72,13 +72,41 @@ Existing loop knobs for reference (see [`config.py`](../backend/app/config.py)):
 `EVOVERSE_WORKER_INTERVAL_SECONDS` (default `2`),
 `EVOVERSE_WORKER_TICKS_PER_STEP` (default `1`).
 
-## Known limitation
+## Deep event feeds — keyset pagination
 
-In-memory event history is now bounded, so the store's in-memory event feeds
-(chronicle / region / species event lists) only page over the most recent
-`MAX_LOADED_EVENTS`. Deeper history remains in the DB; serving it needs DB-backed
-event pagination (follow-up work). Raise `MAX_LOADED_EVENTS` if a deeper live feed
-matters more than reload cost.
+The in-memory working set is bounded by `MAX_LOADED_EVENTS`, so event feeds do
+**not** page over that in-memory slice. Instead they page straight from the DB via
+keyset (cursor) pagination, so the chronicle / region / species feeds scroll
+arbitrarily deep (years of history) at constant per-page cost — without inflating
+the cap.
+
+- **Repository** — `AlphaStateRepository.events_page(...)` orders newest-first by
+  the `(tick, id)` total order. A `cursor` resumes with `WHERE (tick, id) <
+  (cursor)` (O(log n) per page via the `idx_events_*_tick` indexes); with no
+  cursor it falls back to `OFFSET` so the legacy offset contract still works to any
+  depth (just slower deep). Cursors are opaque `"{tick}:{id}"` strings
+  (`encode_event_cursor` / `decode_event_cursor`).
+- **Store** — `chronicle` / `region_events` / `species_events` take an optional
+  `cursor` and route to the DB when persistence is on; memory mode pages over the
+  in-memory window (all the history that mode has).
+- **API** — those three endpoints accept a `cursor` query param and return
+  `pagination.nextCursor` alongside the existing `hasMore` / `nextOffset` / `total`
+  (additive, so existing offset clients keep working).
+- **Indexes** — `migrations/011_event_feed_keyset_indexes.sql` adds
+  `(region_id, tick, id)` and `(species_id, tick, id)`; the chronicle uses the
+  `(universe_id, tick, id)` index from migration 009.
+
+Prefer `cursor` for deep scroll (constant cost); `offset` remains for shallow
+jumps. `MAX_LOADED_EVENTS` now only governs the worker/API reload cost, not feed
+depth.
+
+### Backlog — table partitioning
+
+`events_page` keeps a single growing table fast via indexes. When the table nears
+millions of rows (a few years), switch `events` to monthly range partitions on
+`tick`/`created_at`: per-partition indexes stay small, retention becomes `DROP
+PARTITION` instead of `DELETE`, and cold partitions can be archived (Parquet/JSONL).
+Deferred until real volume — tracked in `sira.md` (Paket 17).
 
 ## Server sizing
 

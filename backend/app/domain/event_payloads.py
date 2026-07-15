@@ -45,6 +45,11 @@ EVENT_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
         "description": "Chiral symmetry broke: a region, lineage, or the whole "
         "universe latched to a single handedness.",
     },
+    "era_advanced": {
+        "required": ("from_era", "to_era"),
+        "optional": ("homochirality_index",),
+        "description": "The universe crossed a maturity gate and advanced to a new era.",
+    },
 }
 
 
