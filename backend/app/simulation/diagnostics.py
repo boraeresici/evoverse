@@ -153,9 +153,17 @@ def scale_free_scan(
     from app.simulation import SimulationEngine, seed_alpha
 
     points: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     normalized_curves: list[list[tuple[float, float]]] = []
     for width, height in sizes:
-        state = seed_alpha(seed=seed, width=width, height=height)
+        # The seeder pins species origins to fixed region ids (up to region-101), so
+        # worlds smaller than the default 12x9 can't be seeded. Skip rather than crash;
+        # the scale-free ladder scans upward from the default.
+        try:
+            state = seed_alpha(seed=seed, width=width, height=height)
+        except KeyError:
+            skipped.append({"width": width, "height": height, "reason": "unseedable-size"})
+            continue
         SimulationEngine(seed=seed).advance(state, ticks=ticks)
         result = correlation_field(state, field, metric=metric)
         length = max(width, height)
@@ -181,6 +189,7 @@ def scale_free_scan(
         "metric": metric,
         "ticks": ticks,
         "points": points,
+        "skipped": skipped,
         "dataCollapseError": collapse_error,
         "verdict": _scale_free_verdict(points, collapse_error),
     }

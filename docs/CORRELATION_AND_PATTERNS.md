@@ -127,11 +127,17 @@ A single ξ means nothing on its own. Scale-free = **ξ scales with system size*
 the *same seed/ticks* at a ladder of sizes and inspect how ξ moves:
 
 ```
-sizes = [(8,6), (12,9), (16,12), (24,18), (32,24)]   # L = max(width,height)
+sizes = [(12,9), (16,12), (20,15), (24,18), (32,24)]   # L = max(width,height)
 for (w,h) in sizes:
     state = seed_alpha(seed, width=w, height=h); advance(state, ticks)
     ξ(L)  = correlation_length(state).xi
 ```
+
+> **Seeder constraint:** `seed_alpha` pins species origins to fixed region ids (up to
+> `region-101`), so worlds smaller than the default **12×9** cannot be seeded. The
+> ladder therefore scans **upward** from 12×9; `scale_free_scan` records any
+> unseedable size under `skipped` rather than crashing. (Making origins size-agnostic
+> is a separate seeder change, out of scope for this read-only diagnostic.)
 
 Verdicts:
 
@@ -297,8 +303,11 @@ under specific conditions,"* captured and counted.
 
 ## 6. API & wiring
 
-All additions live in [`benchmark.py`](../backend/app/simulation/benchmark.py); no
-engine or domain changes. Pure functions over an `AlphaState`:
+The pure analysis functions live in a dedicated
+[`app/simulation/diagnostics.py`](../backend/app/simulation/diagnostics.py) module
+(kept out of `benchmark.py` so they stay unit-testable in isolation);
+[`benchmark.py`](../backend/app/simulation/benchmark.py) imports them and wires the
+CLI + report. No engine or domain changes. Pure functions over an `AlphaState`:
 
 ```python
 def correlation_field(state, field: str, *, metric: str = "manhattan") -> dict:

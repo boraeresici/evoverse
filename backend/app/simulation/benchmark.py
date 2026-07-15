@@ -249,7 +249,7 @@ def _parse_sizes(raw: str) -> list[tuple[int, int]]:
     return sizes
 
 
-DEFAULT_SCALE_FREE_SIZES = "8x6,12x9,16x12,24x18"
+DEFAULT_SCALE_FREE_SIZES = "12x9,16x12,20x15,24x18"
 
 
 def main() -> None:

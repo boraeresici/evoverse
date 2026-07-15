@@ -8,6 +8,42 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ## [Unreleased]
 
+### Added
+
+- **Correlation-length & organism-pattern diagnostics** (design
+  [`docs/CORRELATION_AND_PATTERNS.md`](docs/CORRELATION_AND_PATTERNS.md)). A read-only,
+  deterministic measurement layer in `backend/app/simulation/diagnostics.py`, wired
+  into the benchmark CLI, that answers "can the system reproduce the starling
+  scale-free correlation, and capture recurring organism patterns?" empirically:
+  **(A)** a correlation length ξ over region-field fluctuations (mean-subtracted, C(r)
+  first zero-crossing) plus a `scale_free_scan` across world sizes with a
+  `critical`/`sub_critical`/`super_critical` verdict and data-collapse error;
+  **(B)** a pattern census that captures and *counts* recurring motifs — morphotypes
+  (with a convergent-evolution index), spatial tilings, a domain-size power-law fit,
+  lineage motifs, and event n-grams — each with distinct/entropy/effective-count;
+  **(C)** conditional triggers, a lift table joining each motif to the state (era,
+  region bands, collapse, catalyst) it forms under, in static and deterministic-replay
+  trace modes. New benchmark flags `--correlation --patterns --triggers --scale-free
+  --sizes --field --trace`; the default benchmark and determinism signature are
+  unchanged. Covered by `backend/tests/test_diagnostics.py`. The measured verdict on
+  the current engine tuning is `sub_critical` (short-range correlation) — an honest
+  "not scale-free in this regime", not biological validation.
+- **Chirality field (T1) — inheritance, selection, and symmetry-break events**
+  (design §6.2–6.3, §7). Lineages now carry a handedness (`Species.chirality`,
+  −1/0/+1) that is adopted one-way from the origin region's locked hand ("chiral
+  central dogma") and inherited at speciation, with a rare, near-always-lethal
+  chiral-flip mutation. Heterochiral selection taxes the growth of a committed
+  lineage sitting in an opposite-hand region and is lethal past a load threshold
+  (an uncommitted lineage is never penalized). A new `SYMMETRY_BREAK` event marks
+  the universe's first molecular break, each lineage committing a hand, and the
+  universe reaching full homochirality. Surfaced on the API (`chirality`,
+  `heterochiralLoad` on species), persisted (migration `010_species_chirality.sql`
+  + species snapshot payload), and covered by `backend/tests/test_chirality.py`.
+  New editable `ChiralityRules` knobs: `inheritFlipChance`,
+  `heterochiralGrowthPenalty`, `heterochiralLethalLoad`, `heterochiralLethalDecline`.
+  Rule loading now also tolerates configs predating individual rule fields (not
+  just whole sections), falling back to field defaults.
+
 ### Fixed
 
 - **Worker loop no longer degrades or errors out over time.** The persistence hot
