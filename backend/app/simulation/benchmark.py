@@ -230,12 +230,14 @@ def _print_diagnostics(report: dict) -> None:
     for key in ("triggers", "triggersTraced"):
         if key in report:
             triggers = report[key]
-            print(f"Triggers ({triggers['mode']}, {triggers.get('instances', 0)} instances):")
-            for row in triggers["table"][:5]:
-                print(
-                    f"  {row['pattern']}  ⇐  {row['condition']}  "
-                    f"(lift={row['lift']}, support={row['support']})"
-                )
+            print(f"Triggers ({triggers['mode']}):")
+            for family, table in triggers["families"].items():
+                print(f"  [{family}] {table.get('instances', 0)} instances")
+                for row in table["table"][:3]:
+                    print(
+                        f"    {row['pattern']}  ⇐  {row['condition']}  "
+                        f"(lift={row['lift']}, support={row['support']})"
+                    )
 
 
 def _parse_sizes(raw: str) -> list[tuple[int, int]]:

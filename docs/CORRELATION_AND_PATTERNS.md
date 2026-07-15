@@ -279,25 +279,40 @@ def pattern_triggers(state) -> dict:                         # static co-locatio
 def pattern_triggers_traced(seed, ticks, *, step) -> dict:  # trace / emergence mode
 ```
 
+Output is grouped **per motif family**, so lift stays comparable within a family
+(each family has its own instance population) rather than being diluted across mixed
+instance types. Static triggers cover `spatial` (one instance per region, on that
+region's condition), `morphotype` and `lineage` (one instance per species, on the
+species' **origin-region** condition). Traced triggers cover `spatial` (world-scope
+condition at first appearance) and `morphotype` (each `SPECIES_EMERGED` event joined
+to its origin region's condition, sampled at step granularity).
+
 ```jsonc
 "triggers": {
   "mode": "static",                       // or "traced"
-  "table": [
-    { "pattern": "spatial:0|0,0,1,1", "condition": "collapsed_boundary|era=STABILIZATION",
-      "lift": 3.4, "support": 11, "pGivenC": 0.28 }
-  ],
-  "conditionProfiles": {                  // each top motif's modal condition
-    "spatial:0|0,0,0,0": { "era": "STABILIZATION", "stabilityBand": "high", "catalyst": "none" }
-  },
-  "topByCondition": {                     // each condition's most-triggered motifs
-    "resource_burst_active": [ {"pattern":"morphotype:high-mobility","lift":2.1,"support":6} ]
+  "families": {
+    "spatial": {
+      "instances": 40,
+      "table": [
+        { "pattern": "spatial:0|-1,0,0,1", "condition": "era=STABILIZATION|stab=mid|res=high|...",
+          "lift": 6.67, "support": 2, "pGivenC": 0.5 }
+      ],
+      "conditionProfiles": {              // each top motif's modal condition
+        "spatial:0|0,0,0,0": "era=STABILIZATION|stab=high|...|cat=none"
+      },
+      "topByCondition": {                 // each condition's most-triggered motifs
+        "era=STABILIZATION|stab=mid|...": [ {"pattern":"spatial:0|-1,0,0,1","lift":6.67,"support":2} ]
+      }
+    },
+    "morphotype": { "instances": 10, "table": [ ... ], ... },
+    "lineage":    { "instances": 10, "table": [ ... ], ... }
   }
 }
 ```
 
-The `table` is sorted by `lift · log(support)` so strong **and** well-supported
-triggers rank first. This is the layer that reads as *"specific patterns forming
-under specific conditions,"* captured and counted.
+Each family's `table` is sorted by `lift · log(support)` so strong **and** well-
+supported triggers rank first. This is the layer that reads as *"specific patterns
+forming under specific conditions,"* captured and counted.
 
 ---
 
@@ -394,6 +409,10 @@ the report breaks):
   condition-band cutoffs (low/mid/high thresholds); and whether to eventually store a
   lightweight per-tick condition ring-buffer in the engine instead of re-deriving by
   replay (replay keeps the engine untouched — **preferred** until cost forces it).
+- **Open (triggers):** trace mode covers `spatial` + `morphotype`; `lineage` is
+  static-only because a lineage's branching shape is trivially `(0, 0)` at emergence
+  and only becomes informative later. A per-tick region-condition join (rather than
+  step-sampled) would remove the emergence-condition approximation.
 
 ---
 

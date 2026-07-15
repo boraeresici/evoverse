@@ -114,17 +114,30 @@ def test_domain_sizes_sum_to_regions_with_a_dominant_species() -> None:
 # --- Part C: conditional triggers -------------------------------------------
 
 
-def test_pattern_triggers_instances_match_regions_with_a_dominant_species() -> None:
+def test_pattern_triggers_cover_every_family() -> None:
     state = _advanced_state()
     triggers = pattern_triggers(state)
     assert triggers["mode"] == "static"
+    families = triggers["families"]
+    assert set(families) == {"spatial", "morphotype", "lineage"}
+
+    # Spatial family: one instance per region with a dominant species.
     dominant_regions = sum(
         1 for region in state.regions.values() if region.dominant_species_id is not None
     )
-    assert triggers["instances"] == dominant_regions
-    for row in triggers["table"]:
-        assert row["lift"] >= 0.0
-        assert row["support"] >= 1
+    assert families["spatial"]["instances"] == dominant_regions
+
+    # Morphotype & lineage families: one instance per species with a live origin
+    # region — and every morphotype pattern is joined to a region-scoped condition.
+    species_with_origin = sum(
+        1 for species in state.species.values() if species.origin_region_id in state.regions
+    )
+    assert families["morphotype"]["instances"] == species_with_origin
+    assert families["lineage"]["instances"] == species_with_origin
+    for row in families["morphotype"]["table"]:
+        assert row["pattern"].startswith("morphotype:")
+        assert row["condition"].startswith("era=")  # region-level condition vector
+        assert row["lift"] >= 0.0 and row["support"] >= 1
 
 
 def test_condition_vector_is_a_readable_stable_string() -> None:
@@ -139,6 +152,11 @@ def test_pattern_triggers_traced_captures_emergence_conditions() -> None:
     traced = pattern_triggers_traced(4211, 400, step=100)
     assert traced["mode"] == "traced"
     assert traced["step"] == 100
-    # Every stamped instance is a (pattern, condition) row feeding the lift table.
-    assert traced["instances"] >= 1
+    families = traced["families"]
+    assert set(families) == {"spatial", "morphotype"}
+    # Spatial motifs appear over the run, and species emergences are event-joined to
+    # their origin-region conditions.
+    assert families["spatial"]["instances"] >= 1
+    assert families["morphotype"]["instances"] >= 1
+    # Deterministic replay: same inputs → identical output.
     assert traced == pattern_triggers_traced(4211, 400, step=100)

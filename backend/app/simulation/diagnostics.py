@@ -22,7 +22,7 @@ import math
 from collections import Counter, defaultdict, deque
 from typing import Any
 
-from app.domain import AlphaState, Region
+from app.domain import AlphaState, EventType, Region
 
 # --- Part A -----------------------------------------------------------------
 
@@ -482,20 +482,27 @@ def _r_squared(xs: list[float], ys: list[float], slope: float) -> float:
     return 1 - ss_res / ss_tot
 
 
-def _lineage_motif_census(state: AlphaState) -> dict[str, Any]:
+def _children_index(state: AlphaState) -> dict[str, list[str]]:
+    """species_id → sorted list of its direct child species ids."""
     children: dict[str, list[str]] = defaultdict(list)
     for species in sorted(state.species.values(), key=lambda item: item.id):
         if species.parent_species_id is not None:
             children[species.parent_species_id].append(species.id)
+    return children
+
+
+def _lineage_shape(state: AlphaState, species_id: str, children: dict[str, list[str]]) -> tuple[int, int]:
+    """The local branching motif of a species: (child count, extinct-child count)."""
+    kids = children.get(species_id, [])
+    extinct = sum(1 for kid in kids if state.species[kid].status.value == "extinct")
+    return len(kids), extinct
+
+
+def _lineage_motif_census(state: AlphaState) -> dict[str, Any]:
+    children = _children_index(state)
     counter: Counter = Counter()
     for species in sorted(state.species.values(), key=lambda item: item.id):
-        kids = children.get(species.id, [])
-        extinct = sum(
-            1
-            for kid in kids
-            if state.species[kid].status.value == "extinct"
-        )
-        counter[(len(kids), extinct)] += 1
+        counter[_lineage_shape(state, species.id, children)] += 1
     top = [
         {"children": key[0], "extinctChildren": key[1], "count": count}
         for key, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))[:DEFAULT_TOP]
@@ -635,16 +642,56 @@ def _lift_table(instances: list[tuple[str, str]], *, top: int = 20) -> dict[str,
     }
 
 
-def pattern_triggers(state: AlphaState) -> dict[str, Any]:
-    """Static co-location: which conditions each spatial motif forms under."""
+def _sig_label(sig: tuple[float, ...]) -> str:
+    return "-".join(str(value) for value in sig)
+
+
+def _condition_for_region(state: AlphaState, region_id: str) -> str | None:
+    region = state.regions.get(region_id)
+    return condition_vector(state, region) if region is not None else None
+
+
+def _static_trigger_instances(state: AlphaState) -> dict[str, list[tuple[str, str]]]:
+    """Per-family (pattern, condition) instances for the static lift tables.
+
+    * ``spatial`` — one instance per region, conditioned on that region's state.
+    * ``morphotype`` / ``lineage`` — one instance per species, conditioned on the
+      state of the species' origin region.
+    """
     coords = _region_coords(state)
-    instances: list[tuple[str, str]] = []
+    spatial: list[tuple[str, str]] = []
     for region in sorted(state.regions.values(), key=lambda item: item.id):
         motif = _spatial_motif_key(region, coords)
-        if motif is None:
+        if motif is not None:
+            spatial.append((f"spatial:{motif}", condition_vector(state, region)))
+
+    children = _children_index(state)
+    morphotype: list[tuple[str, str]] = []
+    lineage: list[tuple[str, str]] = []
+    for species in sorted(state.species.values(), key=lambda item: item.id):
+        condition = _condition_for_region(state, species.origin_region_id)
+        if condition is None:
             continue
-        instances.append((f"spatial:{motif}", condition_vector(state, region)))
-    return {"mode": "static", **_lift_table(instances)}
+        morphotype.append(
+            (f"morphotype:{_sig_label(_morphotype_signature(species))}", condition)
+        )
+        kids, extinct = _lineage_shape(state, species.id, children)
+        lineage.append((f"lineage:{kids}-{extinct}", condition))
+
+    return {"spatial": spatial, "morphotype": morphotype, "lineage": lineage}
+
+
+def pattern_triggers(state: AlphaState) -> dict[str, Any]:
+    """Static co-location: which conditions each motif family forms under.
+
+    Each family gets its own lift table (its own instance population), so lift stays
+    comparable within a family rather than being diluted across mixed instance types.
+    """
+    families = _static_trigger_instances(state)
+    return {
+        "mode": "static",
+        "families": {name: _lift_table(instances) for name, instances in families.items()},
+    }
 
 
 def _global_condition(state: AlphaState) -> str:
@@ -674,30 +721,57 @@ def pattern_triggers_traced(
     *,
     step: int = 200,
 ) -> dict[str, Any]:
-    """Trace mode: stamp each motif with the global condition it *first appears* under.
+    """Trace mode: stamp each motif with the conditions it *emerges* under.
 
-    Deterministic replay — advances in ``step``-tick samples and records, for every
-    spatial motif not seen before, the current global condition (its emergence
-    conditions). The engine is never modified; we re-derive by replay.
+    Deterministic replay in ``step``-tick samples. Two families:
+
+    * ``spatial`` — each spatial motif is recorded, the first time it appears, with
+      the current *global* (world-scope) condition.
+    * ``morphotype`` — each ``SPECIES_EMERGED`` event is joined to its origin
+      **region's** condition (sampled at step granularity), so a body plan is tied to
+      the local state it arose in, not just the world average.
+
+    The engine is never modified; everything is re-derived by replay.
     """
     from app.simulation import SimulationEngine, seed_alpha
 
     state = seed_alpha(seed=seed)
     engine = SimulationEngine(seed=seed)
-    seen: set[str] = set()
-    instances: list[tuple[str, str]] = []
+    seen_spatial: set[str] = set()
+    spatial_instances: list[tuple[str, str]] = []
+    morphotype_instances: list[tuple[str, str]] = []
+    event_cursor = 0
 
     def sample() -> None:
+        nonlocal event_cursor
         coords = _region_coords(state)
-        condition = _global_condition(state)
+        global_condition = _global_condition(state)
         present = {
             key
             for region in state.regions.values()
             if (key := _spatial_motif_key(region, coords)) is not None
         }
-        for motif in sorted(present - seen):
-            instances.append((f"spatial:{motif}", condition))
-            seen.add(motif)
+        for motif in sorted(present - seen_spatial):
+            spatial_instances.append((f"spatial:{motif}", global_condition))
+            seen_spatial.add(motif)
+
+        # Join new SPECIES_EMERGED events to their origin region's condition. The
+        # event log is append-only, so the cursor only moves forward (deterministic).
+        while event_cursor < len(state.events):
+            event = state.events[event_cursor]
+            event_cursor += 1
+            if event.event_type != EventType.SPECIES_EMERGED:
+                continue
+            if event.species_id is None or event.region_id is None:
+                continue
+            species = state.species.get(event.species_id)
+            region = state.regions.get(event.region_id)
+            if species is None or region is None:
+                continue
+            label = _sig_label(_morphotype_signature(species))
+            morphotype_instances.append(
+                (f"morphotype:{label}", condition_vector(state, region))
+            )
 
     sample()
     remaining = ticks
@@ -707,4 +781,12 @@ def pattern_triggers_traced(
         remaining -= advance_by
         sample()
 
-    return {"mode": "traced", "step": step, "ticks": ticks, **_lift_table(instances)}
+    return {
+        "mode": "traced",
+        "step": step,
+        "ticks": ticks,
+        "families": {
+            "spatial": _lift_table(spatial_instances),
+            "morphotype": _lift_table(morphotype_instances),
+        },
+    }

@@ -32,9 +32,12 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   **(B)** a pattern census that captures and *counts* recurring motifs — morphotypes
   (with a convergent-evolution index), spatial tilings, a domain-size power-law fit,
   lineage motifs, and event n-grams — each with distinct/entropy/effective-count;
-  **(C)** conditional triggers, a lift table joining each motif to the state (era,
-  region bands, collapse, catalyst) it forms under, in static and deterministic-replay
-  trace modes. New benchmark flags `--correlation --patterns --triggers --scale-free
+  **(C)** conditional triggers, per-motif-family lift tables (spatial / morphotype /
+  lineage) joining each motif to the state (era, region bands, collapse, chirality,
+  catalyst) it forms under — statically (spatial on region conditions, morphotype and
+  lineage on origin-region conditions) and in deterministic-replay trace mode, where
+  `SPECIES_EMERGED` events are joined to their origin region's condition at emergence.
+  New benchmark flags `--correlation --patterns --triggers --scale-free
   --sizes --field --trace`; the default benchmark and determinism signature are
   unchanged. Covered by `backend/tests/test_diagnostics.py`. The measured verdict on
   the current engine tuning is `sub_critical` (short-range correlation) — an honest
