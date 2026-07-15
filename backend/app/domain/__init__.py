@@ -20,6 +20,7 @@ from app.domain.models import (
     Traits,
     Universe,
     clamp,
+    clamp_signed,
 )
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "Traits",
     "Universe",
     "clamp",
+    "clamp_signed",
     "event_payload_schema",
     "validate_event_payload",
     "version_event_payload",

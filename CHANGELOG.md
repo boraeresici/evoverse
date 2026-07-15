@@ -6,6 +6,104 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [Unreleased]
+
+### Added
+
+- **Keyset (cursor) pagination for event feeds.** The chronicle, region, and
+  species event feeds now page straight from the DB via a `(tick, id)` keyset
+  instead of the in-memory (tail-capped) list, so they scroll arbitrarily deep
+  (years of history) at constant per-page cost. New `AlphaStateRepository.events_page`,
+  optional `cursor` on the `chronicle` / `region_events` / `species_events` store
+  methods and their endpoints, and a `pagination.nextCursor` field added alongside
+  the existing `hasMore` / `nextOffset` / `total` (additive — offset clients keep
+  working). Backed by `(region_id, tick, id)` / `(species_id, tick, id)` indexes
+  (`migrations/011_event_feed_keyset_indexes.sql`). Table partitioning for
+  millions-of-rows scale is deferred to the backlog. See
+  [`docs/PERFORMANCE_LOOP.md`](docs/PERFORMANCE_LOOP.md).
+- **Correlation-length & organism-pattern diagnostics** (design
+  [`docs/CORRELATION_AND_PATTERNS.md`](docs/CORRELATION_AND_PATTERNS.md)). A read-only,
+  deterministic measurement layer in `backend/app/simulation/diagnostics.py`, wired
+  into the benchmark CLI, that answers "can the system reproduce the starling
+  scale-free correlation, and capture recurring organism patterns?" empirically:
+  **(A)** a correlation length ξ over region-field fluctuations (mean-subtracted, C(r)
+  first zero-crossing) plus a `scale_free_scan` across world sizes with a
+  `critical`/`sub_critical`/`super_critical` verdict and data-collapse error;
+  **(B)** a pattern census that captures and *counts* recurring motifs — morphotypes
+  (with a convergent-evolution index), spatial tilings, a domain-size power-law fit,
+  lineage motifs, and event n-grams — each with distinct/entropy/effective-count;
+  **(C)** conditional triggers, per-motif-family lift tables (spatial / morphotype /
+  lineage) joining each motif to the state (era, region bands, collapse, chirality,
+  catalyst) it forms under — statically (spatial on region conditions, morphotype and
+  lineage on origin-region conditions) and in deterministic-replay trace mode, where
+  `SPECIES_EMERGED` events are joined to their origin region's condition at emergence.
+  New benchmark flags `--correlation --patterns --triggers --scale-free
+  --sizes --field --trace`; the default benchmark and determinism signature are
+  unchanged. Covered by `backend/tests/test_diagnostics.py`. The measured verdict on
+  the current engine tuning is `sub_critical` (short-range correlation) — an honest
+  "not scale-free in this regime", not biological validation.
+- **Chirality field (T1) — inheritance, selection, and symmetry-break events**
+  (design §6.2–6.3, §7). Lineages now carry a handedness (`Species.chirality`,
+  −1/0/+1) that is adopted one-way from the origin region's locked hand ("chiral
+  central dogma") and inherited at speciation, with a rare, near-always-lethal
+  chiral-flip mutation. Heterochiral selection taxes the growth of a committed
+  lineage sitting in an opposite-hand region and is lethal past a load threshold
+  (an uncommitted lineage is never penalized). A new `SYMMETRY_BREAK` event marks
+  the universe's first molecular break, each lineage committing a hand, and the
+  universe reaching full homochirality. Surfaced on the API (`chirality`,
+  `heterochiralLoad` on species), persisted (migration `010_species_chirality.sql`
+  + species snapshot payload), and covered by `backend/tests/test_chirality.py`.
+  New editable `ChiralityRules` knobs: `inheritFlipChance`,
+  `heterochiralGrowthPenalty`, `heterochiralLethalLoad`, `heterochiralLethalDecline`.
+  Rule loading now also tolerates configs predating individual rule fields (not
+  just whole sections), falling back to field defaults.
+- **Two-tier Era gate — eras are now earned, not seeded** (design §6.4). The
+  universe advances Expansion → **Stabilization** once its `homochirality_index`
+  crosses `life_gate_index` (chemistry → life), and Stabilization → **Intelligence**
+  once it crosses `mind_gate_index` *and* a lineage has `mind_locked` (life → mind).
+  Because no lineage locks a mind until the cognitive tier (T2) ships, Intelligence
+  stays genuinely unreachable for now. Progression is monotonic (an era is never
+  lost) and announced once via a new `ERA_ADVANCED` chronicle event. New editable
+  `ChiralityRules` knobs `lifeGateIndex`/`mindGateIndex`; `current_era` was already
+  persisted, so no migration was needed. Covered by `backend/tests/test_chirality.py`.
+  Featured-event and pagination consumers already tolerate the universe-scope events
+  (`era_advanced`, universe `symmetry_break`) that carry no `regionId`.
+
+### Fixed
+
+- **Worker loop no longer degrades or errors out over time.** The persistence hot
+  path was O(event history) on every tick: `load_alpha` hydrated the entire event
+  log into memory, and `save_alpha` deduped writes with an `id IN (<all events>)`
+  clause that eventually blew past the DB driver's bind-parameter limit (constant
+  errors) after progressively freezing. Fixes: tail-load only the newest
+  `MAX_LOADED_EVENTS`, an append watermark bounded by `MAX(tick)`, optional
+  `MAX_STORED_EVENTS` retention pruning, and hot-path indexes
+  (`migrations/009_loop_hotpath_indexes.sql`). New env knobs
+  `EVOVERSE_MAX_LOADED_EVENTS` (default 2000) and `EVOVERSE_MAX_STORED_EVENTS`
+  (default 0 = unlimited). See [`docs/PERFORMANCE_LOOP.md`](docs/PERFORMANCE_LOOP.md).
+
+## [0.4.0] - 2026-07-15
+
+### Added
+
+- **Chirality field (T1)** — a symmetry-breaking *maturity* subsystem inspired by
+  S. Furkan Ozturk & Dimitar Sasselov's biological-homochirality research. Each
+  region carries an enantiomeric excess (`chirality_ee`, −1..+1) that drifts through
+  a pitchfork bifurcation, latches irreversibly once it crosses the lock threshold,
+  and avalanches its hand to neighbours; the universe exposes `homochirality_index`
+  (mean |ee|) as a single maturity metric. New editable `ChiralityRules` section flows
+  through the `/admin/config` draft → validate → apply → rollback path, with a
+  backward-compatible fallback so stored configs predating the section still load.
+  Surfaced on the API (`chiralityEe`, `homochiralityIndex`, `chiralityLocked` on the
+  universe and regions), persisted (migration `008_chirality_field.sql`, plus snapshot
+  payloads for time travel), and included in the determinism signature. Covered by
+  `backend/tests/test_chirality.py`.
+- **Design note** [`docs/CHIRALITY_AND_MIND.md`](docs/CHIRALITY_AND_MIND.md) — the full
+  spec: field/rule schema, the two-tier "life → mind" (cognitive homochirality)
+  framing, the Era gate, the three.js Organism Lens hooks, and the scientific
+  references. Linked from the README, `docs/DEVELOPMENT.md`, and the resources shelf,
+  which now cites Ozturk's publications as orientation points.
+
 ## [0.3.7] - 2026-07-04
 
 ### Fixed

@@ -6,7 +6,11 @@ from threading import RLock
 from uuid import uuid4
 
 from app.domain import CatalystActionType, EventType
-from app.persistence import AlphaStateConflictError, AlphaStateRepository
+from app.persistence import (
+    AlphaStateConflictError,
+    AlphaStateRepository,
+    encode_event_cursor,
+)
 from app.services.serializers import (
     serialize_event,
     serialize_population,
@@ -1334,11 +1338,21 @@ class AlphaStore:
             return _snapshot_details_from_state(self._state)
         return None
 
-    def chronicle(self, time_filter: str = "all", limit: int = 50, offset: int = 0) -> dict:
+    def chronicle(
+        self,
+        time_filter: str = "all",
+        limit: int = 50,
+        offset: int = 0,
+        cursor: str | None = None,
+    ) -> dict:
         with self._lock:
             self._refresh()
-            events = self._filter_events(time_filter)
-            page = _paginate_events(events, limit=limit, offset=offset)
+            page = self._events_page(
+                limit=limit,
+                offset=offset,
+                cursor=cursor,
+                min_world_age=self._time_filter_min_age(time_filter),
+            )
             return {
                 "universe": serialize_universe(self._state),
                 "timeFilter": time_filter,
@@ -1446,15 +1460,20 @@ class AlphaStore:
             ],
         }
 
-    def region_events(self, region_id: str, limit: int = 50, offset: int = 0) -> dict | None:
+    def region_events(
+        self,
+        region_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        cursor: str | None = None,
+    ) -> dict | None:
         with self._lock:
             self._refresh()
             if region_id not in self._state.regions:
                 return None
-            events = [
-                event for event in self._state.events if event.region_id == region_id
-            ]
-            page = _paginate_events(events, limit=limit, offset=offset)
+            page = self._events_page(
+                limit=limit, offset=offset, cursor=cursor, region_id=region_id
+            )
             return {
                 "regionId": region_id,
                 "events": [
@@ -1530,15 +1549,20 @@ class AlphaStore:
                 "generatedAtWorldAge": self._state.universe.age_years,
             }
 
-    def species_events(self, species_id: str, limit: int = 50, offset: int = 0) -> dict | None:
+    def species_events(
+        self,
+        species_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        cursor: str | None = None,
+    ) -> dict | None:
         with self._lock:
             self._refresh()
             if species_id not in self._state.species:
                 return None
-            events = [
-                event for event in self._state.events if event.species_id == species_id
-            ]
-            page = _paginate_events(events, limit=limit, offset=offset)
+            page = self._events_page(
+                limit=limit, offset=offset, cursor=cursor, species_id=species_id
+            )
             return {
                 "speciesId": species_id,
                 "events": [
@@ -1899,18 +1923,50 @@ class AlphaStore:
             regions = regions[:limit]
         return [serialize_region(region, self._state) for region in regions]
 
-    def _filter_events(self, time_filter: str) -> list:
+    def _time_filter_min_age(self, time_filter: str) -> int | None:
+        """Minimum ``world_age`` for a chronicle time filter (``None`` = no bound)."""
         if time_filter == "now":
-            minimum_age = self._state.universe.age_years - 12
-        elif time_filter == "last_24h":
-            minimum_age = self._state.universe.age_years - 24
-        elif time_filter == "last_7d":
-            minimum_age = self._state.universe.age_years - 168
-        else:
-            return self._state.events
-        return [
-            event for event in self._state.events if event.world_age >= minimum_age
-        ]
+            return self._state.universe.age_years - 12
+        if time_filter == "last_24h":
+            return self._state.universe.age_years - 24
+        if time_filter == "last_7d":
+            return self._state.universe.age_years - 168
+        return None
+
+    def _events_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        cursor: str | None,
+        region_id: str | None = None,
+        species_id: str | None = None,
+        min_world_age: int | None = None,
+    ) -> dict:
+        """Route event-feed pagination to the DB (keyset) when persistence is on.
+
+        The DB path sees the full history, so feeds scroll past the in-memory tail
+        cap. Without a repository (memory mode) we page over the in-memory window,
+        which is all the history that mode has anyway.
+        """
+        if self._repository is not None:
+            return self._repository.events_page(
+                universe_id=self._state.universe.id,
+                limit=limit,
+                offset=offset,
+                cursor=cursor,
+                region_id=region_id,
+                species_id=species_id,
+                min_world_age=min_world_age,
+            )
+        events = self._state.events
+        if region_id is not None:
+            events = [event for event in events if event.region_id == region_id]
+        if species_id is not None:
+            events = [event for event in events if event.species_id == species_id]
+        if min_world_age is not None:
+            events = [event for event in events if event.world_age >= min_world_age]
+        return _paginate_events(events, limit=limit, offset=offset, cursor=cursor)
 
     def event_type_coverage(self) -> set[EventType]:
         with self._lock:
@@ -2300,20 +2356,37 @@ class AlphaStore:
                 return
 
 
-def _paginate_events(events, *, limit: int, offset: int) -> dict:
-    ordered = list(reversed(events))
+def _paginate_events(events, *, limit: int, offset: int, cursor: str | None = None) -> dict:
+    ordered = list(reversed(events))  # newest first, matching the DB keyset order
     total = len(ordered)
-    offset = max(0, offset)
     limit = max(1, limit)
+    if cursor:
+        # Keyset over the in-memory (tail) window: resume after the cursor row.
+        index = next(
+            (
+                position
+                for position, event in enumerate(ordered)
+                if encode_event_cursor(event.tick, event.id) == cursor
+            ),
+            None,
+        )
+        offset = index + 1 if index is not None else 0
+    else:
+        offset = max(0, offset)
     items = ordered[offset : offset + limit]
+    has_more = offset + limit < total
+    next_cursor = (
+        encode_event_cursor(items[-1].tick, items[-1].id) if has_more and items else None
+    )
     return {
         "items": items,
         "pagination": {
             "limit": limit,
             "offset": offset,
             "total": total,
-            "hasMore": offset + limit < total,
-            "nextOffset": offset + limit if offset + limit < total else None,
+            "hasMore": has_more,
+            "nextOffset": offset + limit if (cursor is None and has_more) else None,
+            "nextCursor": next_cursor,
         },
     }
 

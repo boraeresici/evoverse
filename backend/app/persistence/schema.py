@@ -38,6 +38,9 @@ universes = Table(
     Column("current_era", Text, nullable=False),
     Column("tick", BigInteger, nullable=False),
     Column("stability_index", Numeric(6, 3), nullable=False),
+    Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
+    Column("homochirality_index", Numeric(6, 4), nullable=False, default=0),
+    Column("chirality_locked", Boolean, nullable=False, default=False),
 )
 
 regions = Table(
@@ -53,6 +56,8 @@ regions = Table(
     Column("stability", Numeric(6, 3), nullable=False),
     Column("dominant_species_id", Text),
     Column("collapsed", Boolean, nullable=False, default=False),
+    Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
+    Column("chirality_locked", Boolean, nullable=False, default=False),
 )
 
 species = Table(
@@ -67,6 +72,8 @@ species = Table(
     Column("generation", Integer, nullable=False),
     Column("parent_species_id", Text, ForeignKey("species.id")),
     Column("traits", JSON, nullable=False),
+    Column("chirality", Integer, nullable=False, default=0),
+    Column("heterochiral_load", Numeric(6, 4), nullable=False, default=0),
 )
 
 populations = Table(

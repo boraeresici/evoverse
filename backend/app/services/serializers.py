@@ -19,6 +19,9 @@ def serialize_universe(state: AlphaState) -> dict:
         "regionCount": len(state.regions),
         "recentEvents": len(recent_events),
         "stabilityIndex": round(state.universe.stability_index, 3),
+        "chiralityEe": round(state.universe.chirality_ee, 4),
+        "homochiralityIndex": round(state.universe.homochirality_index, 4),
+        "chiralityLocked": state.universe.chirality_locked,
     }
 
 
@@ -66,6 +69,8 @@ def serialize_region(region: Region, state: AlphaState) -> dict:
         "resourceDensity": region.resource_density,
         "stability": region.stability,
         "lifeIndex": round(life_index, 3),
+        "chiralityEe": round(region.chirality_ee, 4),
+        "chiralityLocked": region.chirality_locked,
         "collapsed": region.collapsed,
         "dominantSpeciesId": dominant_species.id if dominant_species else None,
         "dominantSpeciesName": dominant_species.name if dominant_species else None,
@@ -115,6 +120,8 @@ def serialize_species(species: Species, state: AlphaState) -> dict:
         "emergedAtWorldAge": species.emerged_at_world_age,
         "generation": species.generation,
         "parentSpeciesId": species.parent_species_id,
+        "chirality": species.chirality,
+        "heterochiralLoad": round(species.heterochiral_load, 4),
         "traits": species.traits.to_public(),
         "regions": regions[:12],
         "forecast": serialize_species_forecast(species, state),

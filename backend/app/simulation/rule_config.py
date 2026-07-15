@@ -9,6 +9,7 @@ from typing import Any
 from app.domain import CatalystActionType
 from app.simulation.rules import (
     CatalystRules,
+    ChiralityRules,
     ChronicleRules,
     DEFAULT_SIMULATION_RULES,
     PopulationRules,
@@ -30,6 +31,7 @@ SECTION_TYPES = {
     "chronicle": ChronicleRules,
     "species_status": SpeciesStatusRules,
     "universe": UniverseRules,
+    "chirality": ChiralityRules,
 }
 
 
@@ -183,6 +185,12 @@ def _rules_from_public(
         section_errors: list[dict[str, str]] = []
         public_section = _public_key(private_section)
         section_payload = public_rules.get(public_section)
+        if section_payload is None:
+            # A stored config predating this section (e.g. "chirality" added in a
+            # later migration) falls back to the section default rather than
+            # failing to load. Keeps old revisions restorable.
+            kwargs[private_section] = section_type()
+            continue
         if not isinstance(section_payload, dict):
             section_errors.append(_error(public_section, "Rules section is missing or invalid."))
             errors.extend(section_errors)
@@ -192,7 +200,11 @@ def _rules_from_public(
             public_field = _public_key(field.name)
             path = f"{public_section}.{public_field}"
             if public_field not in section_payload:
-                section_errors.append(_error(path, "Rule value is missing."))
+                # A stored config predating this field (e.g. the heterochiral knobs
+                # added after the T1 chirality slice) falls back to the field
+                # default rather than failing to load. The update path always merges
+                # onto full defaults, so only stored configs reach this branch.
+                section_kwargs[field.name] = getattr(section_type(), field.name)
                 continue
             value = section_payload[public_field]
             if field.name == "daily_limits":

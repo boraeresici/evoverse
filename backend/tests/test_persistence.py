@@ -190,6 +190,70 @@ def test_event_store_is_append_only_across_current_snapshot_saves(tmp_path) -> N
     assert reloaded.next_event_index == state.next_event_index
 
 
+def test_events_page_keyset_paginates_the_full_log(tmp_path, monkeypatch) -> None:
+    import app.persistence.repository as repo
+
+    # Force the in-memory hydration cap low to prove the keyset feed reads the
+    # full DB history, not just the loaded slice.
+    monkeypatch.setattr(repo, "MAX_LOADED_EVENTS", 20)
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211).advance(state, ticks=400)
+    repository.save_alpha(state)
+
+    all_ids_newest_first = [event.id for event in reversed(state.events)]
+    assert len(all_ids_newest_first) > 20  # exceeds the in-memory cap
+    assert len(repository.load_alpha(seed=4211).events) == 20  # load respects cap
+
+    seen: list[str] = []
+    cursor = None
+    pages = 0
+    while True:
+        page = repository.events_page(limit=7, cursor=cursor)
+        seen.extend(event.id for event in page["items"])
+        assert page["pagination"]["total"] == len(all_ids_newest_first)
+        cursor = page["pagination"]["nextCursor"]
+        pages += 1
+        assert pages < 1000  # guard against a non-advancing cursor
+        if cursor is None:
+            break
+
+    assert seen == all_ids_newest_first  # gapless, newest-first, no duplicates
+    assert len(set(seen)) == len(seen)
+    assert page["pagination"]["hasMore"] is False
+
+
+def test_events_page_filters_by_entity_and_supports_offset(tmp_path) -> None:
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211).advance(state, ticks=200)
+    repository.save_alpha(state)
+
+    region_id = "region-001"
+    expected = [
+        event.id for event in reversed(state.events) if event.region_id == region_id
+    ]
+    page = repository.events_page(limit=100, region_id=region_id)
+    assert [event.id for event in page["items"]] == expected
+    assert page["pagination"]["total"] == len(expected)
+    assert all(event.region_id == region_id for event in page["items"])
+
+    # Offset path (no cursor) still walks the full log, in the same order.
+    first = repository.events_page(limit=5, offset=0)
+    second = repository.events_page(limit=5, offset=5)
+    combined = [event.id for event in first["items"]] + [
+        event.id for event in second["items"]
+    ]
+    assert combined == [event.id for event in reversed(state.events)][:10]
+    assert first["pagination"]["nextOffset"] == 5
+
+
 def test_repository_normalizes_legacy_event_payloads_on_load(tmp_path) -> None:
     repository = AlphaStateRepository(
         f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",

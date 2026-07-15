@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 
 from app.domain import (
     AlphaState,
     CatalystAction,
     CatalystActionType,
+    Era,
     EventType,
     Population,
     Region,
@@ -13,11 +15,25 @@ from app.domain import (
     SpeciesStatus,
     Traits,
     clamp,
+    clamp_signed,
 )
 from app.simulation import event_templates
 from app.simulation.randomness import stable_rng
 from app.simulation.rules import DEFAULT_SIMULATION_RULES, SimulationRules
-from app.simulation.seeder import SPECIES_NAMES
+from app.simulation.seeder import SPECIES_NAMES, _recalculate_universe_chirality
+
+
+def _hand_word(hand_sign: int) -> str:
+    return "right" if hand_sign >= 0 else "left"
+
+
+# Eras are ordered achievements; the gate only ever moves a universe forward.
+_ERA_RANK: dict[Era, int] = {
+    Era.GENESIS: 0,
+    Era.EXPANSION: 1,
+    Era.STABILIZATION: 2,
+    Era.INTELLIGENCE: 3,
+}
 
 
 class SimulationEngine:
@@ -37,12 +53,14 @@ class SimulationEngine:
             state.universe.tick += 1
             state.universe.age_years += 1
             self._advance_regions(state)
+            self._advance_chirality(state)
             self._advance_populations(state)
             self._maybe_emit_forced_chronicle_events(state)
             self._maybe_speciate(state)
             self._update_species_statuses(state)
             self._recalculate_dominant_species(state)
             self._update_universe_stability(state)
+            self._advance_era(state)
             self._expire_catalyst_actions(state)
         return state
 
@@ -165,8 +183,131 @@ class SimulationEngine:
                     payload=catalyst_context,
                 )
 
+    def _advance_chirality(self, state: AlphaState) -> None:
+        """Molecular symmetry breaking (T1). See docs/CHIRALITY_AND_MIND.md §6.1.
+
+        Each unlocked region drifts through a pitchfork bifurcation, then latches
+        irreversibly once |ee| crosses the lock threshold. A locked, strongly
+        handed region then magnetizes its unlocked neighbours (avalanche), so a
+        single broken hand spreads across the map.
+        """
+        rules = self.rules.chirality
+        locked_before = sum(region.chirality_locked for region in state.regions.values())
+        newly_locked: list[Region] = []
+
+        for region in state.regions.values():
+            if region.chirality_locked:
+                continue
+            rng = stable_rng(state.seed, "chirality-drift", state.universe.tick, region.id)
+            ee = region.chirality_ee
+            noise = (rng.random() * 2 - 1) * rules.noise_scale * (1 - abs(ee))
+            ee = clamp_signed(ee + rules.amplify_k * ee * (1 - ee * ee) + noise)
+            if abs(ee) >= rules.ee_lock_threshold:
+                region.chirality_ee = math.copysign(1.0, ee)
+                region.chirality_locked = True
+                newly_locked.append(region)
+            else:
+                region.chirality_ee = round(ee, 4)
+
+        coords = {(region.x, region.y): region for region in state.regions.values()}
+        deltas: dict[str, float] = defaultdict(float)
+        for region in state.regions.values():
+            if (
+                not region.chirality_locked
+                or abs(region.chirality_ee) < rules.avalanche_min_source
+            ):
+                continue
+            push = rules.avalanche_bleed * math.copysign(1.0, region.chirality_ee)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                neighbor = coords.get((region.x + dx, region.y + dy))
+                if neighbor is not None and not neighbor.chirality_locked:
+                    deltas[neighbor.id] += push
+        for region_id, delta in deltas.items():
+            region = state.regions[region_id]
+            ee = clamp_signed(region.chirality_ee + delta)
+            if abs(ee) >= rules.ee_lock_threshold:
+                region.chirality_ee = math.copysign(1.0, ee)
+                region.chirality_locked = True
+                newly_locked.append(region)
+            else:
+                region.chirality_ee = round(ee, 4)
+
+        # The universe's very first molecular symmetry break is chronicle-worthy.
+        if locked_before == 0 and newly_locked:
+            first = newly_locked[0]
+            hand_sign = 1 if first.chirality_ee > 0 else -1
+            title, summary = event_templates.symmetry_break_region(first, hand_sign)
+            state.add_event(
+                EventType.SYMMETRY_BREAK,
+                title,
+                summary,
+                severity=4,
+                region_id=first.id,
+                payload={"scope": "region", "hand": _hand_word(hand_sign), "hand_sign": hand_sign},
+            )
+
+        self._adopt_species_chirality(state)
+
+        universe_locked_before = state.universe.chirality_locked
+        _recalculate_universe_chirality(state)
+        if not universe_locked_before and state.universe.chirality_locked:
+            title, summary = event_templates.symmetry_break_universe(
+                state.universe.homochirality_index
+            )
+            state.add_event(
+                EventType.SYMMETRY_BREAK,
+                title,
+                summary,
+                severity=5,
+                payload={
+                    "scope": "universe",
+                    "homochirality_index": round(state.universe.homochirality_index, 4),
+                },
+            )
+
+    def _adopt_species_chirality(self, state: AlphaState) -> None:
+        """Chiral central dogma (§6.2): an unhanded lineage adopts its origin
+        region's hand the first time that region latches. One-way — a lineage that
+        has committed a hand never re-derives it here."""
+        for species in state.species.values():
+            if species.chirality != 0 or species.status == SpeciesStatus.EXTINCT:
+                continue
+            origin = state.regions.get(species.origin_region_id)
+            if origin is None or not origin.chirality_locked:
+                continue
+            hand_sign = 1 if origin.chirality_ee > 0 else -1
+            species.chirality = hand_sign
+            title, summary = event_templates.symmetry_break_lineage(species, hand_sign)
+            state.add_event(
+                EventType.SYMMETRY_BREAK,
+                title,
+                summary,
+                severity=3,
+                region_id=origin.id,
+                species_id=species.id,
+                payload={"scope": "lineage", "hand": _hand_word(hand_sign), "hand_sign": hand_sign},
+            )
+
+    def _heterochiral_mismatch(self, species: Species, region: Region) -> float:
+        """|ee| only when a *committed* lineage sits in an opposite-hand region;
+        0 in a racemic region, a same-hand region, or before the lineage has
+        adopted a hand (an unhanded lineage is uncommitted, not wrong-handed).
+        See §6.3."""
+        region_ee = region.chirality_ee
+        if region_ee == 0.0 or species.chirality == 0:
+            return 0.0
+        region_sign = 1 if region_ee > 0 else -1
+        if species.chirality == region_sign:
+            return 0.0
+        return abs(region_ee)
+
     def _advance_populations(self, state: AlphaState) -> None:
         rules = self.rules.population
+        chirality_rules = self.rules.chirality
+        # Population-weighted mismatch per species, resolved into heterochiral_load
+        # after the loop so a lineage in many regions gets one honest figure.
+        load_weighted: dict[str, float] = defaultdict(float)
+        load_total: dict[str, int] = defaultdict(int)
         for population in list(state.populations.values()):
             region = state.regions[population.region_id]
             species = state.species[population.species_id]
@@ -179,6 +320,14 @@ class SimulationEngine:
                 + region.resource_density * species.traits.adaptation
                 + region.stability * species.traits.resilience
             ) / rules.habitat_fit_divisor
+            # Heterochiral selection (§6.3): a hand mismatch with the region taxes
+            # growth, and a severe one is lethal — scrambled chirality stores no
+            # viable information.
+            mismatch = self._heterochiral_mismatch(species, region)
+            if mismatch > 0:
+                habitat_fit *= 1 - chirality_rules.heterochiral_growth_penalty * mismatch
+            load_weighted[species.id] += mismatch * previous_count
+            load_total[species.id] += previous_count
             density_pressure = min(
                 rules.density_pressure_cap,
                 previous_count / rules.density_pressure_scale,
@@ -189,6 +338,8 @@ class SimulationEngine:
                 - density_pressure
                 - collapse_penalty
             )
+            if mismatch >= chirality_rules.heterochiral_lethal_load:
+                growth = min(growth, -chirality_rules.heterochiral_lethal_decline)
             population.growth_rate = round(growth, 4)
             population.migration_pressure = round(
                 clamp(
@@ -222,6 +373,12 @@ class SimulationEngine:
                 and population.migration_pressure > rules.migration_pressure_threshold
             ):
                 self._migrate_population(state, population)
+
+        for species_id, total in load_total.items():
+            if total > 0:
+                state.species[species_id].heterochiral_load = round(
+                    load_weighted[species_id] / total, 4
+                )
 
     def _maybe_emit_forced_chronicle_events(self, state: AlphaState) -> None:
         tick = state.universe.tick
@@ -323,8 +480,19 @@ class SimulationEngine:
             "mobility": rng.uniform(rules.mobility_delta_min, rules.mobility_delta_max),
             "resilience": rng.uniform(rules.resilience_delta_min, rules.resilience_delta_max),
         }
+        # Chiral central dogma (§6.2): the child inherits the parent's hand. A rare
+        # flip is almost always lethal — its opposite hand is heterochiral in its
+        # (parent-handed) origin region, so selection culls it.
+        child_id = state.next_species_id()
+        child_chirality = parent.chirality
+        chiral_flip = False
+        if child_chirality != 0:
+            flip_rng = stable_rng(state.seed, "chiral-flip", child_id)
+            if flip_rng.random() < self.rules.chirality.inherit_flip_chance:
+                child_chirality = -child_chirality
+                chiral_flip = True
         child = Species(
-            id=state.next_species_id(),
+            id=child_id,
             universe_id=state.universe.id,
             name=self._next_species_name(state),
             origin_region_id=region.id,
@@ -333,6 +501,7 @@ class SimulationEngine:
             generation=parent.generation + 1,
             parent_species_id=parent.id,
             traits=parent.traits.mutated(deltas),
+            chirality=child_chirality,
         )
         state.species[child.id] = child
         child_count = max(
@@ -364,6 +533,7 @@ class SimulationEngine:
             payload={
                 "child_species_id": child.id,
                 "trait_deltas": {k: round(v, 3) for k, v in deltas.items()},
+                **({"chiral_flip": True} if chiral_flip else {}),
                 **catalyst_context,
             },
         )
@@ -459,6 +629,45 @@ class SimulationEngine:
             ),
             3,
         )
+
+    def _advance_era(self, state: AlphaState) -> None:
+        """Two-tier maturity gate (§6.4). Eras are earned, never seeded or lost:
+
+        * Genesis/Expansion → **Stabilization** once the universe's homochirality
+          index crosses ``life_gate_index`` (T1: chemistry becomes life).
+        * Stabilization → **Intelligence** once homochirality crosses
+          ``mind_gate_index`` *and* some lineage has ``mind_locked`` (T2). Because
+          no lineage locks a mind until the cognitive tier ships, Intelligence
+          stays unreachable here — earned, not given.
+        """
+        rules = self.rules.chirality
+        idx = state.universe.homochirality_index
+        current = state.universe.current_era
+        target = current
+
+        if _ERA_RANK[current] < _ERA_RANK[Era.STABILIZATION] and idx >= rules.life_gate_index:
+            target = Era.STABILIZATION
+        if (
+            _ERA_RANK[target] < _ERA_RANK[Era.INTELLIGENCE]
+            and idx >= rules.mind_gate_index
+            and any(species.mind_locked for species in state.species.values())
+        ):
+            target = Era.INTELLIGENCE
+
+        if _ERA_RANK[target] > _ERA_RANK[current]:
+            state.universe.current_era = target
+            title, summary = event_templates.era_advanced(current, target, idx)
+            state.add_event(
+                EventType.ERA_ADVANCED,
+                title,
+                summary,
+                severity=5,
+                payload={
+                    "from_era": current.value,
+                    "to_era": target.value,
+                    "homochirality_index": round(idx, 4),
+                },
+            )
 
     def _expire_catalyst_actions(self, state: AlphaState) -> None:
         state.catalyst_actions = [

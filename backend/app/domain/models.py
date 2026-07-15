@@ -38,6 +38,8 @@ class EventType(StrEnum):
     REGION_RESOURCE_SHIFT = "region_resource_shift"
     REGION_COLLAPSE = "region_collapse"
     CATALYST_ACTION = "catalyst_action"
+    SYMMETRY_BREAK = "symmetry_break"
+    ERA_ADVANCED = "era_advanced"
 
 
 class CatalystActionType(StrEnum):
@@ -50,6 +52,11 @@ def clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
     return max(minimum, min(maximum, value))
 
 
+def clamp_signed(value: float) -> float:
+    """Clamp to the bipolar chirality range [-1, +1]."""
+    return max(-1.0, min(1.0, value))
+
+
 @dataclass(slots=True)
 class Universe:
     id: str
@@ -58,6 +65,14 @@ class Universe:
     current_era: Era
     tick: int
     stability_index: float
+    # Chirality field (T1). ``chirality_ee`` is the global net handedness in
+    # [-1, +1] (0 = racemic); ``homochirality_index`` is mean |ee| across regions
+    # in [0, 1] and is the maturity metric the product reads. Once ``chirality_locked``
+    # latches, the universe has crossed the molecular symmetry break irreversibly.
+    # See docs/CHIRALITY_AND_MIND.md.
+    chirality_ee: float = 0.0
+    homochirality_index: float = 0.0
+    chirality_locked: bool = False
 
 
 @dataclass(slots=True)
@@ -72,6 +87,10 @@ class Region:
     stability: float
     dominant_species_id: str | None = None
     collapsed: bool = False
+    # Local handedness (T1): drifts through a bifurcation, then avalanches to
+    # neighbours and latches. See docs/CHIRALITY_AND_MIND.md.
+    chirality_ee: float = 0.0
+    chirality_locked: bool = False
 
 
 @dataclass(slots=True)
@@ -115,6 +134,15 @@ class Species:
     generation: int
     parent_species_id: str | None
     traits: Traits
+    # Chiral central dogma (T1). ``chirality`` is the lineage's handedness
+    # (-1 / 0 / +1; 0 = not yet committed), inherited one-way from the parent and
+    # first adopted from the origin region's locked hand. ``heterochiral_load`` is
+    # the 0..1 mismatch burden used for selection. See docs/CHIRALITY_AND_MIND.md §6.2–6.3.
+    chirality: int = 0
+    heterochiral_load: float = 0.0
+    # Cognitive homochirality (T2, not yet driven). The Intelligence-Era gate reads
+    # this, so it stays unreachable until the cognitive tier sets it. See §6.4–6.5.
+    mind_locked: bool = False
 
 
 @dataclass(slots=True)
