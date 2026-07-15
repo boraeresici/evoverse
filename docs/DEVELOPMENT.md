@@ -96,6 +96,22 @@ and observability. The positioning that came out of that study:
 
 The lineage is deliberate, not accidental — and it is lineage, not replication.
 
+### A second scientific input: homochirality as a maturity mechanic
+
+Beyond the cellular-automata lineage, a planned subsystem takes an input from
+origin-of-life chemistry: S. Furkan Ozturk & Dimitar Sasselov's work on **biological
+homochirality** — how life's single-handedness arises from a racemic start through a
+magnetically induced symmetry break that self-amplifies and *locks*, and how that
+handedness then propagates as one-way *information* (their "central dogma of
+homochirality"). Evoverse models this as a **chirality field**: a per-region
+enantiomeric excess that drifts through a bifurcation, latches irreversibly, and
+avalanches to neighbours, with the universe-level *homochirality index* serving as a
+single **maturity** metric. The same mechanism, applied a tier up to a lineage's
+internal world-model, frames the "life → mind" question. The full design — fields,
+`ChiralityRules`, the two-tier Era gate, and the references — lives in
+[`CHIRALITY_AND_MIND.md`](CHIRALITY_AND_MIND.md); the T1 slice (field + bifurcation +
+homochirality index) is implemented and covered by determinism tests.
+
 ---
 
 ## 3. Simulation Model & Determinism

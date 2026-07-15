@@ -20,6 +20,16 @@ The design deliberately combines cellular automata, artificial-life ecology, res
 - [International Society for Artificial Life](https://alife.org/): Community, publications, conferences, and current Artificial Life research signals.
 - [Lenia: Biology of Artificial Life](https://arxiv.org/abs/1812.05433): Continuous cellular automata work useful for thinking about generated lifeforms.
 
+## Origins of life & homochirality
+
+These inform Alpha's *chirality field* — a symmetry-breaking maturity mechanic. The repository design note `docs/CHIRALITY_AND_MIND.md` explains how they map onto the tick engine. Orientation points, not endorsements.
+
+- [Origin of biological homochirality by crystallization of an RNA precursor on a magnetic surface](https://www.science.org/doi/10.1126/sciadv.adg8274) (Ozturk, Liu, Sutherland, Sasselov — *Science Advances*, 2023; open preprint [arXiv:2303.01394](https://arxiv.org/abs/2303.01394)): racemic RNA precursor reaches full single-handedness on a magnetic surface via symmetry breaking + self-amplification.
+- [Chirality-Induced Avalanche Magnetization of Magnetite by an RNA Precursor](https://arxiv.org/abs/2304.09095) (Ozturk et al. — *Nature Communications*, 2023): the feedback loop that makes the broken hand spread and lock persistently.
+- [The central dogma of biological homochirality: how does chiral information propagate in a prebiotic network?](https://pmc.ncbi.nlm.nih.gov/articles/PMC7615580/) (Ozturk, Sasselov, Sutherland — *J. Chem. Phys.*, 2023): chirality treated as one-way *information*, à la Crick's central dogma.
+- "On the origins of life's homochirality: inducing enantiomeric excess with spin-polarized electrons" (Ozturk & Sasselov — *PNAS*, 2022) and [Life's homochirality across a prebiotic network](https://www.pnas.org/doi/10.1073/pnas.2505126122) (*PNAS*, 2025): the spin-selectivity basis and network-level robustness. Full list on the author's [publications page](https://sukrufurkanozturk.owlstown.net/projects).
+- [Autopoiesis and Cognition](https://en.wikipedia.org/wiki/Autopoiesis) (Maturana & Varela, 1980) and Prof. Dr. Türker Kılıç's network-science ("bağlantısallık") framing: orientation for treating *thought* as life's information process folded back on itself — the second tier in the chirality-and-mind design.
+
 ## Related writing
 
 - [Evoverse: Not Creating a World, but Witnessing One](https://medium.com/@eresicibora/evoverse-bir-d%C3%BCnyay%C4%B1-yaratmak-de%C4%9Fil-ona-tan%C4%B1kl%C4%B1k-etmek-b7be7bcf5f30): Essay by Bora ERESICI on Evoverse's observe-don't-command stance.

@@ -4,7 +4,7 @@ Evoverse is a persistent artificial life observatory. The product starts with Al
 
 🌐 <a href="https://evoverse.studiobinary.co" target="_blank" rel="noreferrer"><b>Live demo — evoverse.studiobinary.co</b></a> (test environment)
 
-**Version:** 0.3.7 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
+**Version:** 0.4.0 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
 
 ## What's Inside (0.2.0)
 
@@ -30,6 +30,8 @@ Alpha is now a living, time-travelable observatory rather than a data panel:
 **Purpose** (see [`/purpose`](frontend/content/purpose.md)): make artificial life observable, explainable, and product-ready. Evoverse starts from the spirit of Conway's Game of Life — a seeded grid, discrete ticks, local rules, emergence read over time — but it is **not** a binary B3/S23 clone. Each map cell is raised into a *region aggregate* (energy, resources, stability, collapse state, dominant species, population composition) so the product can answer richer questions: what changed, where a species moved, why a region collapsed, and whether the universe is becoming more stable. The relationship to Conway is deliberate lineage, not replication: shared grid/tick/emergence, different (ecological, explainable, historical) model.
 
 **References** (see [`/resources`](frontend/content/resources.md)): orientation points, not endorsements or copied content — Conway's Game of Life & ConwayLife.com (cellular automata origin), NASA Astrobiology and Darwin's *On the Origin of Species* (biology/evolution), and the International Society for Artificial Life (current ALife research). Alpha deliberately combines cellular automata, artificial-life ecology, resource dynamics, event sourcing, snapshot comparison, and observer/catalyst interaction — less mathematically minimal than Life, more legible as a product.
+
+A planned *chirality field* subsystem draws on S. Furkan Ozturk & Dimitar Sasselov's homochirality research ([Science Advances 2023](https://www.science.org/doi/10.1126/sciadv.adg8274), [arXiv:2303.01394](https://arxiv.org/abs/2303.01394); [Nature Communications 2023](https://arxiv.org/abs/2304.09095); the "[central dogma of biological homochirality](https://pmc.ncbi.nlm.nih.gov/articles/PMC7615580/)") to model a symmetry-breaking *maturity* metric, extended to a two-tier "life → mind" framing. See [`docs/CHIRALITY_AND_MIND.md`](docs/CHIRALITY_AND_MIND.md).
 
 **Related writing** by Bora ERESICI:
 

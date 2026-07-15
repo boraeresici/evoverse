@@ -21,7 +21,7 @@ EVENT_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
     },
     "mutation_detected": {
         "required": (),
-        "optional": ("child_species_id", "trait_deltas"),
+        "optional": ("child_species_id", "trait_deltas", "chiral_flip"),
         "description": "A mutation pressure or branch was detected for a species.",
     },
     "region_resource_shift": {
@@ -38,6 +38,12 @@ EVENT_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
         "required": ("action_type", "action_id", "user_id"),
         "optional": ("day_key",),
         "description": "A user-triggered catalyst action was accepted.",
+    },
+    "symmetry_break": {
+        "required": ("scope",),
+        "optional": ("hand", "hand_sign", "homochirality_index"),
+        "description": "Chiral symmetry broke: a region, lineage, or the whole "
+        "universe latched to a single handedness.",
     },
 }
 

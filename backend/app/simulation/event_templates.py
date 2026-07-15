@@ -40,6 +40,34 @@ def region_collapse(region: Region) -> tuple[str, str]:
     )
 
 
+def _hand_label(hand_sign: int) -> str:
+    return "right-handed" if hand_sign >= 0 else "left-handed"
+
+
+def symmetry_break_region(region: Region, hand_sign: int) -> tuple[str, str]:
+    return (
+        f"Chiral symmetry broke in {region.id}",
+        f"{region.id} latched to a {_hand_label(hand_sign)} chirality — the first "
+        f"molecular symmetry break in Alpha, now irreversible.",
+    )
+
+
+def symmetry_break_lineage(species: Species, hand_sign: int) -> tuple[str, str]:
+    return (
+        f"{species.name} committed to a chirality",
+        f"{species.name} adopted a {_hand_label(hand_sign)} hand from its origin "
+        f"region — heritable chiral information now flows down its lineage.",
+    )
+
+
+def symmetry_break_universe(homochirality_index: float) -> tuple[str, str]:
+    return (
+        "Alpha reached full homochirality",
+        f"Every viable region has latched to a single hand (homochirality index "
+        f"{homochirality_index:.2f}). Alpha crossed the chemistry-to-life threshold.",
+    )
+
+
 def catalyst_action(action_type: CatalystActionType, region: Region) -> tuple[str, str]:
     labels = {
         CatalystActionType.ENERGY_PULSE: "Energy Pulse",
@@ -60,4 +88,5 @@ EVENT_TYPE_LABELS: dict[EventType, str] = {
     EventType.REGION_RESOURCE_SHIFT: "Resource shift",
     EventType.REGION_COLLAPSE: "Region collapse",
     EventType.CATALYST_ACTION: "Catalyst action",
+    EventType.SYMMETRY_BREAK: "Symmetry break",
 }

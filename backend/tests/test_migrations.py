@@ -14,7 +14,7 @@ from app.persistence.migrations import (
 def test_discovers_initial_sql_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 7
+    assert len(migrations) == 10
     assert migrations[0].version == "001"
     assert migrations[0].name == "initial_schema"
     assert len(migrations[0].checksum) == 64
@@ -37,6 +37,15 @@ def test_discovers_initial_sql_migration() -> None:
     assert migrations[6].name == "observability_analytics"
     assert "CREATE TABLE IF NOT EXISTS api_request_logs" in migrations[6].sql
     assert "CREATE TABLE IF NOT EXISTS product_analytics_events" in migrations[6].sql
+    assert migrations[7].version == "008"
+    assert migrations[7].name == "chirality_field"
+    assert "ADD COLUMN IF NOT EXISTS chirality_ee" in migrations[7].sql
+    assert migrations[8].version == "009"
+    assert migrations[8].name == "loop_hotpath_indexes"
+    assert "idx_events_universe_tick" in migrations[8].sql
+    assert migrations[9].version == "010"
+    assert migrations[9].name == "species_chirality"
+    assert "ADD COLUMN IF NOT EXISTS chirality" in migrations[9].sql
 
 
 def test_upgrade_applies_pending_sql_migrations(tmp_path) -> None:

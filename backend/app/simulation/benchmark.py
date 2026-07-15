@@ -9,6 +9,13 @@ from typing import Any
 
 from app.domain import AlphaState
 from app.simulation import SimulationEngine, seed_alpha
+from app.simulation.diagnostics import (
+    correlation_length,
+    pattern_census,
+    pattern_triggers,
+    pattern_triggers_traced,
+    scale_free_scan,
+)
 
 
 DEFAULT_BENCHMARK_TICKS = 10_000
@@ -43,6 +50,9 @@ def determinism_signature(state: AlphaState) -> str:
             "current_era": state.universe.current_era.value,
             "stability_index": state.universe.stability_index,
             "tick": state.universe.tick,
+            "chirality_ee": state.universe.chirality_ee,
+            "homochirality_index": state.universe.homochirality_index,
+            "chirality_locked": state.universe.chirality_locked,
         },
         "event_counts": _event_counts(state),
         "regions": [
@@ -53,6 +63,8 @@ def determinism_signature(state: AlphaState) -> str:
                 "energy_level": region.energy_level,
                 "resource_density": region.resource_density,
                 "stability": region.stability,
+                "chirality_ee": region.chirality_ee,
+                "chirality_locked": region.chirality_locked,
             }
             for region in sorted(state.regions.values(), key=lambda item: item.id)
         ],
@@ -64,6 +76,8 @@ def determinism_signature(state: AlphaState) -> str:
                 "parent_species_id": species.parent_species_id,
                 "population": species_totals.get(species.id, 0),
                 "status": species.status.value,
+                "chirality": species.chirality,
+                "heterochiral_load": species.heterochiral_load,
                 "traits": species.traits.to_public(),
             }
             for species in sorted(state.species.values(), key=lambda item: item.id)
@@ -181,18 +195,129 @@ def _print_human_report(report: dict) -> None:
     print(f"Determinism Signature: {report['determinismSignature']}")
 
 
+def _print_diagnostics(report: dict) -> None:
+    if "correlation" in report:
+        print("Correlation length (ξ, first zero-crossing of C(r)):")
+        for field, result in report["correlation"].items():
+            flag = " [saturated/ordered]" if result["saturated"] else ""
+            print(f"  {field}: ξ={result['xi']} (c0={result['c0']}){flag}")
+    if "scaleFree" in report:
+        scan = report["scaleFree"]
+        print(f"Scale-free scan (field={scan['field']}): verdict={scan['verdict']}")
+        print(f"  dataCollapseError={scan['dataCollapseError']}")
+        for point in scan["points"]:
+            print(
+                f"  L={point['L']:>3}  ξ={point['xi']:>6}  ξ/L={point['xiOverL']}"
+                f"{'  [saturated]' if point['saturated'] else ''}"
+            )
+    if "patterns" in report:
+        patterns = report["patterns"]
+        morph = patterns["morphotypes"]
+        print(
+            f"Morphotypes: distinct={morph['distinct']} "
+            f"convergenceIndex={morph['convergenceIndex']} "
+            f"effectiveCount={morph['effectiveCount']}"
+        )
+        power = patterns["domainSizePowerLaw"]
+        print(
+            f"Domain-size power law: τ={power['tau']} R²={power['rSquared']} "
+            f"({power['domains']} domains)"
+        )
+        spatial = patterns["spatialMotifs"]
+        print(f"Spatial motifs: distinct={spatial['distinct']}")
+        for motif in spatial["top"][:5]:
+            print(f"  {motif['key']}: {motif['count']}")
+    for key in ("triggers", "triggersTraced"):
+        if key in report:
+            triggers = report[key]
+            print(f"Triggers ({triggers['mode']}, {triggers.get('instances', 0)} instances):")
+            for row in triggers["table"][:5]:
+                print(
+                    f"  {row['pattern']}  ⇐  {row['condition']}  "
+                    f"(lift={row['lift']}, support={row['support']})"
+                )
+
+
+def _parse_sizes(raw: str) -> list[tuple[int, int]]:
+    sizes: list[tuple[int, int]] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        width, _, height = token.partition("x")
+        sizes.append((int(width), int(height)))
+    return sizes
+
+
+DEFAULT_SCALE_FREE_SIZES = "8x6,12x9,16x12,24x18"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Evoverse simulation benchmark.")
     parser.add_argument("--seed", type=int, default=4211)
     parser.add_argument("--ticks", type=int, default=DEFAULT_BENCHMARK_TICKS)
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument(
+        "--correlation",
+        action="store_true",
+        help="Add C(r) and ξ (correlation length) for the final state.",
+    )
+    parser.add_argument(
+        "--patterns",
+        action="store_true",
+        help="Add the organism pattern census (morphotypes, spatial motifs, ...).",
+    )
+    parser.add_argument(
+        "--triggers",
+        action="store_true",
+        help="Add the condition→pattern lift table (static co-location).",
+    )
+    parser.add_argument(
+        "--scale-free",
+        action="store_true",
+        help="Scan ξ across world sizes and report a scale-free verdict.",
+    )
+    parser.add_argument(
+        "--sizes",
+        default=DEFAULT_SCALE_FREE_SIZES,
+        help=f"Comma-separated WxH sizes for --scale-free (default {DEFAULT_SCALE_FREE_SIZES}).",
+    )
+    parser.add_argument(
+        "--field",
+        default="stability",
+        help="Field for --scale-free (default stability).",
+    )
+    parser.add_argument(
+        "--trace",
+        type=int,
+        metavar="STEP",
+        help="Trace-mode triggers: emergence conditions sampled every STEP ticks.",
+    )
     args = parser.parse_args()
 
     report = run_benchmark(seed=args.seed, ticks=args.ticks)
+    state = seed_alpha(seed=args.seed)
+    SimulationEngine(seed=args.seed).advance(state, ticks=args.ticks)
+    if args.correlation:
+        report["correlation"] = correlation_length(state)
+    if args.patterns:
+        report["patterns"] = pattern_census(state)
+    if args.triggers:
+        report["triggers"] = pattern_triggers(state)
+    if args.trace is not None:
+        report["triggersTraced"] = pattern_triggers_traced(
+            args.seed, args.ticks, step=args.trace
+        )
+    if args.scale_free:
+        report["scaleFree"] = scale_free_scan(
+            args.seed, args.ticks, sizes=_parse_sizes(args.sizes), field=args.field
+        )
+
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         _print_human_report(report)
+        _print_diagnostics(report)
 
 
 if __name__ == "__main__":

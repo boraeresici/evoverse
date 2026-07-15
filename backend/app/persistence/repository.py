@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Engine, create_engine, delete, desc, func, select, update
+from sqlalchemy import Engine, and_, create_engine, delete, desc, func, or_, select, update
 from sqlalchemy.pool import StaticPool
+
+
+# Hot-path bounds for the worker loop. See docs/PERFORMANCE_LOOP.md.
+#
+# MAX_LOADED_EVENTS caps how many events are hydrated into the in-memory working
+# set on every `load_alpha`. Full history stays in the DB; only the most recent
+# slice is rebuilt each reload so the per-tick reload cost stays constant instead
+# of growing forever with the event log.
+MAX_LOADED_EVENTS = int(os.getenv("EVOVERSE_MAX_LOADED_EVENTS", "2000"))
+
+# MAX_STORED_EVENTS is an optional DB-side retention cap. 0 (the default) keeps
+# every event forever; set a positive value to prune the oldest rows on write and
+# bound on-disk growth. Keep it >= MAX_LOADED_EVENTS so a reload can always fill
+# the in-memory slice.
+MAX_STORED_EVENTS = int(os.getenv("EVOVERSE_MAX_STORED_EVENTS", "0"))
 
 from app.domain import (
     AlphaState,
@@ -105,11 +121,18 @@ class AlphaStateRepository:
                 .where(species.c.universe_id == universe_id)
                 .order_by(populations.c.region_id, populations.c.species_id)
             ).mappings().all()
+            # Hydrate only the most recent slice of the event log. Older events
+            # remain in the DB (see MAX_LOADED_EVENTS); this keeps the reload that
+            # runs on every worker tick / API read O(slice) instead of O(history).
+            # The newest ids carry the highest suffix, so next_event_index below
+            # is still correct even though the slice is bounded.
             event_rows = connection.execute(
                 select(events)
                 .where(events.c.universe_id == universe_id)
-                .order_by(events.c.tick, events.c.id)
+                .order_by(events.c.tick.desc(), events.c.id.desc())
+                .limit(MAX_LOADED_EVENTS)
             ).mappings().all()
+            event_rows = list(reversed(event_rows))
             action_rows = connection.execute(
                 select(catalyst_actions)
                 .where(catalyst_actions.c.universe_id == universe_id)
@@ -129,6 +152,9 @@ class AlphaStateRepository:
                 current_era=Era(universe_row["current_era"]),
                 tick=int(universe_row["tick"]),
                 stability_index=float(universe_row["stability_index"]),
+                chirality_ee=float(universe_row["chirality_ee"]),
+                homochirality_index=float(universe_row["homochirality_index"]),
+                chirality_locked=bool(universe_row["chirality_locked"]),
             ),
             regions={
                 row["id"]: Region(
@@ -142,6 +168,8 @@ class AlphaStateRepository:
                     stability=float(row["stability"]),
                     dominant_species_id=row["dominant_species_id"],
                     collapsed=bool(row["collapsed"]),
+                    chirality_ee=float(row["chirality_ee"]),
+                    chirality_locked=bool(row["chirality_locked"]),
                 )
                 for row in region_rows
             },
@@ -156,6 +184,8 @@ class AlphaStateRepository:
                     generation=int(row["generation"]),
                     parent_species_id=row["parent_species_id"],
                     traits=Traits(**row["traits"]),
+                    chirality=int(row["chirality"]),
+                    heterochiral_load=float(row["heterochiral_load"]),
                 )
                 for row in species_rows
             },
@@ -253,6 +283,9 @@ class AlphaStateRepository:
                     "current_era": state.universe.current_era.value,
                     "tick": state.universe.tick,
                     "stability_index": state.universe.stability_index,
+                    "chirality_ee": state.universe.chirality_ee,
+                    "homochirality_index": state.universe.homochirality_index,
+                    "chirality_locked": state.universe.chirality_locked,
                 },
             )
             for region in state.regions.values():
@@ -271,6 +304,8 @@ class AlphaStateRepository:
                         "stability": region.stability,
                         "dominant_species_id": region.dominant_species_id,
                         "collapsed": region.collapsed,
+                        "chirality_ee": region.chirality_ee,
+                        "chirality_locked": region.chirality_locked,
                     },
                 )
             for item in state.species.values():
@@ -288,6 +323,8 @@ class AlphaStateRepository:
                         "generation": item.generation,
                         "parent_species_id": item.parent_species_id,
                         "traits": item.traits.to_public(),
+                        "chirality": item.chirality,
+                        "heterochiral_load": item.heterochiral_load,
                     },
                 )
             if state.populations:
@@ -306,18 +343,7 @@ class AlphaStateRepository:
                         for population in state.populations.values()
                     ],
                 )
-            if state.events:
-                event_ids = [event.id for event in state.events]
-                existing_event_ids = set(
-                    connection.execute(
-                        select(events.c.id).where(events.c.id.in_(event_ids))
-                    ).scalars()
-                )
-                new_events = [
-                    event for event in state.events if event.id not in existing_event_ids
-                ]
-            else:
-                new_events = []
+            new_events = _unpersisted_events(connection, universe_id, state.events)
             if new_events:
                 connection.execute(
                     events.insert(),
@@ -338,6 +364,8 @@ class AlphaStateRepository:
                         for event in new_events
                     ],
                 )
+                if MAX_STORED_EVENTS > 0:
+                    _prune_events(connection, universe_id, keep=MAX_STORED_EVENTS)
             if state.catalyst_actions:
                 connection.execute(
                     catalyst_actions.insert(),
@@ -1313,6 +1341,70 @@ def create_alpha_repository(database_url: str) -> AlphaStateRepository:
     return AlphaStateRepository(database_url, create_schema=True)
 
 
+def _unpersisted_events(connection, universe_id: str, state_events: list) -> list:
+    """Return the events not yet stored, without shipping the whole id log to the DB.
+
+    The event store is append-only, so any event that is not yet persisted must
+    sit at or after the newest tick already stored. We therefore look up existing
+    ids only at that boundary tick, which bounds the dedup query to one tick's
+    worth of events instead of the entire history. The previous implementation
+    built an ``IN (...)`` clause over every event id on every save, which grew
+    linearly and eventually blew past the driver's bind-parameter limit.
+    """
+    if not state_events:
+        return []
+    db_max_tick = connection.execute(
+        select(func.max(events.c.tick)).where(events.c.universe_id == universe_id)
+    ).scalar()
+    if db_max_tick is None:
+        return list(state_events)
+    boundary_ids = set(
+        connection.execute(
+            select(events.c.id).where(
+                events.c.universe_id == universe_id,
+                events.c.tick >= db_max_tick,
+            )
+        ).scalars()
+    )
+    return [
+        event
+        for event in state_events
+        if event.tick > db_max_tick
+        or (event.tick == db_max_tick and event.id not in boundary_ids)
+    ]
+
+
+def _prune_events(connection, universe_id: str, *, keep: int) -> None:
+    """Delete all but the newest ``keep`` events for a universe (opt-in retention).
+
+    Only the oldest rows are removed, so the boundary the append-only writer and
+    the tail loader rely on (the newest tick) is never touched.
+    """
+    total = connection.execute(
+        select(func.count())
+        .select_from(events)
+        .where(events.c.universe_id == universe_id)
+    ).scalar()
+    if total <= keep:
+        return
+    cutoff_tick, cutoff_id = connection.execute(
+        select(events.c.tick, events.c.id)
+        .where(events.c.universe_id == universe_id)
+        .order_by(events.c.tick.desc(), events.c.id.desc())
+        .offset(keep - 1)
+        .limit(1)
+    ).one()
+    connection.execute(
+        delete(events).where(
+            events.c.universe_id == universe_id,
+            or_(
+                events.c.tick < cutoff_tick,
+                and_(events.c.tick == cutoff_tick, events.c.id < cutoff_id),
+            ),
+        )
+    )
+
+
 def _upsert(connection, table, key_columns: list[str], values: dict) -> None:
     assignments = {
         key: value for key, value in values.items() if key not in set(key_columns)
@@ -1392,6 +1484,9 @@ def _insert_snapshot(connection, state: AlphaState) -> None:
         "payload": {
             "snapshot_model": "entity_snapshots_v1",
             "stability_index": state.universe.stability_index,
+            "chirality_ee": state.universe.chirality_ee,
+            "homochirality_index": state.universe.homochirality_index,
+            "chirality_locked": state.universe.chirality_locked,
             "active_catalyst_actions": len(state.catalyst_actions),
             "region_snapshot_count": len(state.regions),
             "species_snapshot_count": len(state.species),
@@ -1455,6 +1550,8 @@ def _insert_snapshot(connection, state: AlphaState) -> None:
                         min(1.0, region_population_totals.get(region.id, 0) / 26000),
                         3,
                     ),
+                    "chirality_ee": region.chirality_ee,
+                    "chirality_locked": region.chirality_locked,
                 },
             }
             for region in state.regions.values()
@@ -1479,6 +1576,8 @@ def _insert_snapshot(connection, state: AlphaState) -> None:
                     "traits": item.traits.to_public(),
                     "payload": {
                         "emerged_at_world_age": item.emerged_at_world_age,
+                        "chirality": item.chirality,
+                        "heterochiral_load": item.heterochiral_load,
                     },
                 }
                 for item in state.species.values()

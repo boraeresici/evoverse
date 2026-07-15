@@ -16,6 +16,7 @@ from app.domain import (
 )
 from app.simulation import event_templates
 from app.simulation.randomness import stable_rng
+from app.simulation.rules import DEFAULT_SIMULATION_RULES
 
 
 SPECIES_NAMES = [
@@ -54,7 +55,29 @@ def seed_alpha(seed: int = 4211, width: int = 12, height: int = 9) -> AlphaState
     _seed_species_and_populations(state)
     _recalculate_dominant_species(state)
     _seed_bootstrap_events(state)
+    _recalculate_universe_chirality(state)
     return state
+
+
+def _recalculate_universe_chirality(state: AlphaState) -> None:
+    """Aggregate region handedness into the universe-level maturity metrics.
+
+    ``chirality_ee`` is the mean signed handedness; ``homochirality_index`` is the
+    mean |ee| over non-collapsed regions (0 = racemic, 1 = fully homochiral).
+    Kept identical in seeder and engine so genesis and ticks agree.
+    """
+    regions = [region for region in state.regions.values() if not region.collapsed]
+    if not regions:
+        state.universe.chirality_ee = 0.0
+        state.universe.homochirality_index = 0.0
+        return
+    state.universe.chirality_ee = round(
+        sum(region.chirality_ee for region in regions) / len(regions), 4
+    )
+    state.universe.homochirality_index = round(
+        sum(abs(region.chirality_ee) for region in regions) / len(regions), 4
+    )
+    state.universe.chirality_locked = all(region.chirality_locked for region in regions)
 
 
 def _seed_regions(seed: int, universe_id: str, width: int, height: int) -> dict[str, Region]:
@@ -71,6 +94,13 @@ def _seed_regions(seed: int, universe_id: str, width: int, height: int) -> dict[
             if index in {18, 73}:
                 resources = 0.12 + rng.random() * 0.08
                 stability = 0.13 + rng.random() * 0.08
+            # Genesis chirality: a tiny deterministic bias off racemic (ee=0), on
+            # its own rng stream so it does not perturb the draws above. The
+            # bifurcation rule amplifies this into a locked hand. See
+            # docs/CHIRALITY_AND_MIND.md §6.1.
+            seed_bias_max = DEFAULT_SIMULATION_RULES.chirality.seed_bias_max
+            chirality_rng = stable_rng(seed, "chirality", index)
+            chirality_ee = (chirality_rng.random() * 2 - 1) * seed_bias_max
             regions[f"region-{index:03d}"] = Region(
                 id=f"region-{index:03d}",
                 universe_id=universe_id,
@@ -80,6 +110,7 @@ def _seed_regions(seed: int, universe_id: str, width: int, height: int) -> dict[
                 energy_level=round(energy, 3),
                 resource_density=round(resources, 3),
                 stability=round(stability, 3),
+                chirality_ee=round(chirality_ee, 4),
             )
     return regions
 

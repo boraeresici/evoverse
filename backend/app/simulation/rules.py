@@ -110,6 +110,27 @@ class SpeciesStatusRules:
 
 
 @dataclass(frozen=True)
+class ChiralityRules:
+    """Molecular symmetry-breaking (T1). See docs/CHIRALITY_AND_MIND.md §5–§6.1.
+
+    Only the T1 bifurcation + avalanche knobs live here; inheritance, selection,
+    the Era gate, and the cognitive tier (T2) arrive in later slices.
+    """
+
+    seed_bias_max: float = 0.02
+    amplify_k: float = 0.06
+    noise_scale: float = 0.03
+    ee_lock_threshold: float = 0.9
+    avalanche_bleed: float = 0.05
+    avalanche_min_source: float = 0.75
+    # Chiral central dogma: one-way inheritance + heterochiral selection (§6.2–6.3).
+    inherit_flip_chance: float = 0.01
+    heterochiral_growth_penalty: float = 0.35
+    heterochiral_lethal_load: float = 0.85
+    heterochiral_lethal_decline: float = 0.5
+
+
+@dataclass(frozen=True)
 class UniverseRules:
     collapse_ratio_stability_penalty: float = 0.18
 
@@ -123,6 +144,7 @@ class SimulationRules:
     chronicle: ChronicleRules = field(default_factory=ChronicleRules)
     species_status: SpeciesStatusRules = field(default_factory=SpeciesStatusRules)
     universe: UniverseRules = field(default_factory=UniverseRules)
+    chirality: ChiralityRules = field(default_factory=ChiralityRules)
 
 
 DEFAULT_SIMULATION_RULES = SimulationRules()

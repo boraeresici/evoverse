@@ -6,6 +6,43 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, and `docs/` for API contracts.
 
+## [Unreleased]
+
+### Fixed
+
+- **Worker loop no longer degrades or errors out over time.** The persistence hot
+  path was O(event history) on every tick: `load_alpha` hydrated the entire event
+  log into memory, and `save_alpha` deduped writes with an `id IN (<all events>)`
+  clause that eventually blew past the DB driver's bind-parameter limit (constant
+  errors) after progressively freezing. Fixes: tail-load only the newest
+  `MAX_LOADED_EVENTS`, an append watermark bounded by `MAX(tick)`, optional
+  `MAX_STORED_EVENTS` retention pruning, and hot-path indexes
+  (`migrations/009_loop_hotpath_indexes.sql`). New env knobs
+  `EVOVERSE_MAX_LOADED_EVENTS` (default 2000) and `EVOVERSE_MAX_STORED_EVENTS`
+  (default 0 = unlimited). See [`docs/PERFORMANCE_LOOP.md`](docs/PERFORMANCE_LOOP.md).
+
+## [0.4.0] - 2026-07-15
+
+### Added
+
+- **Chirality field (T1)** — a symmetry-breaking *maturity* subsystem inspired by
+  S. Furkan Ozturk & Dimitar Sasselov's biological-homochirality research. Each
+  region carries an enantiomeric excess (`chirality_ee`, −1..+1) that drifts through
+  a pitchfork bifurcation, latches irreversibly once it crosses the lock threshold,
+  and avalanches its hand to neighbours; the universe exposes `homochirality_index`
+  (mean |ee|) as a single maturity metric. New editable `ChiralityRules` section flows
+  through the `/admin/config` draft → validate → apply → rollback path, with a
+  backward-compatible fallback so stored configs predating the section still load.
+  Surfaced on the API (`chiralityEe`, `homochiralityIndex`, `chiralityLocked` on the
+  universe and regions), persisted (migration `008_chirality_field.sql`, plus snapshot
+  payloads for time travel), and included in the determinism signature. Covered by
+  `backend/tests/test_chirality.py`.
+- **Design note** [`docs/CHIRALITY_AND_MIND.md`](docs/CHIRALITY_AND_MIND.md) — the full
+  spec: field/rule schema, the two-tier "life → mind" (cognitive homochirality)
+  framing, the Era gate, the three.js Organism Lens hooks, and the scientific
+  references. Linked from the README, `docs/DEVELOPMENT.md`, and the resources shelf,
+  which now cites Ozturk's publications as orientation points.
+
 ## [0.3.7] - 2026-07-04
 
 ### Fixed
