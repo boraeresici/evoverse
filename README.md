@@ -6,11 +6,12 @@ Evoverse is a persistent artificial life observatory. The product starts with Al
 
 **Version:** 0.4.0 · Planned and built 2025–2026 by Bora ERESICI (StudioBinary) · See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach.
 
-## What's Inside (0.2.0)
+## What's Inside
 
 Alpha is now a living, time-travelable observatory rather than a data panel:
 
 - **Deterministic simulation core** — aggregate region/species/population model, catalyst influence, speciation and collapse/recovery, benchmarked over 10,000 ticks.
+- **Chirality field & earned eras** — a symmetry-breaking *maturity* subsystem inspired by Ozturk & Sasselov's homochirality research: regions break a molecular hand that avalanches and locks, lineages inherit it one-way (with a lethal flip mutation), and the universe's `homochirality_index` gates a monotonic `Genesis → Expansion → Stabilization → Intelligence` progression that must be **earned**, not seeded. See [`docs/CHIRALITY_AND_MIND.md`](docs/CHIRALITY_AND_MIND.md).
 - **Persistence & snapshots** — PostgreSQL-backed append-only event store, current-state and tick-level snapshots, Dynamic Report, and realtime chronicle SSE.
 - **Authenticated identity behind a BFF** — session/header identity resolver, admin role gate, Google OAuth wiring, and same-origin `/api/*` BFF routes so the browser never carries local ids or calls the API cross-origin.
 - **Editable rules admin** — `/admin/config` draft → validate → apply → rollback with risky-change preview, revision/audit history, and hot-reload visibility.
