@@ -101,8 +101,32 @@ class SimulationEngine:
         )
         return action
 
+    def _consumption_pressure(self, state: AlphaState) -> dict[str, float]:
+        """What each region's populations draw out of it this tick.
+
+        Reads the counts left by the previous tick's `_advance_populations`, so
+        regions are depleted by the life they actually carried, and the loop
+        closes: more population -> less resource -> worse habitat fit -> less
+        growth -> less draw. That feedback is what a carrying capacity *is*, and
+        it is also where competition between species comes from for free — two
+        lineages in one region now drink from the same well.
+        """
+        rules = self.rules.region
+        pressure: dict[str, float] = defaultdict(float)
+        for population in state.populations.values():
+            if population.population_count <= 0:
+                continue
+            pressure[population.region_id] += (
+                population.population_count * population.energy_consumption
+            )
+        return {
+            region_id: draw / rules.consumption_pressure_scale
+            for region_id, draw in pressure.items()
+        }
+
     def _advance_regions(self, state: AlphaState) -> None:
         rules = self.rules.region
+        consumption = self._consumption_pressure(state)
         for region in state.regions.values():
             rng = stable_rng(state.seed, "region-drift", state.universe.tick, region.id)
             energy_bias, resource_bias, mutation_bias, catalyst_context = (
@@ -120,6 +144,7 @@ class SimulationEngine:
                 + resource_bias
                 + (rules.resource_equilibrium - region.resource_density)
                 * rules.resource_reversion_factor
+                - consumption.get(region.id, 0.0)
             )
             resource_pressure = max(
                 -rules.resource_stability_bonus_cap,

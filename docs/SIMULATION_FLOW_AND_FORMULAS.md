@@ -77,11 +77,46 @@ Per region, per tick ([engine.py:104](../backend/app/simulation/engine.py#L104))
 Let $b_E, b_R, b_\mu$ be the active catalyst biases for this region (§9).
 
 **Energy** and **resource** each drift by a random walk pulled back toward an
-equilibrium (mean-reverting, i.e. an Ornstein–Uhlenbeck-style step):
+equilibrium (mean-reverting, i.e. an Ornstein–Uhlenbeck-style step). Resource
+additionally pays for the life it carries:
 
 $$\Delta E = U(\text{energyDeltaMin},\text{energyDeltaMax}) + b_E + (\bar E - E)\,k_E$$
 
-$$\Delta R = U(\text{resourceDeltaMin},\text{resourceDeltaMax}) + b_R + (\bar R - R)\,k_R$$
+$$\Delta R = U(\text{resourceDeltaMin},\text{resourceDeltaMax}) + b_R + (\bar R - R)\,k_R - D_r$$
+
+**Consumer–resource draw.** $D_r$ is what a region's populations take out of it,
+summed over every population living there and read from the counts the previous
+tick left:
+
+$$D_r = \frac{1}{\text{consumptionPressureScale}}\sum_{s} N_{s,r}\cdot c_s
+\qquad c_s = \texttt{Population.energy\_consumption}$$
+
+This closes the only loop the model was missing. Until it existed, `energy_consumption`
+was computed, persisted and served over the API and **read by nothing**: regions
+drifted on their own noise whether they carried five species or none, and life was
+a passenger in its own world. Three things fall out of one term:
+
+- **A carrying capacity.** Density pressure (§5) throttles a population by its
+  *own* size; nothing tied the ceiling to the world. Measured over 20,000 ticks on
+  the base seed, population without the draw runs 92k → 115k → 162k → 255k — it
+  simply grows. With it, 67k → 66k → 73k → 80k: bounded, and species diversity
+  still climbs to 60.
+- **Interspecific competition, for free.** Populations read only their region and
+  their own count, so two species in one region could not see each other. Now they
+  drink from the same well: a neighbour's headcount arrives as a lower $R$ in your
+  habitat fit. Measured: a lineage sharing its region ends 7.7% smaller over 200
+  ticks than the same lineage with the region to itself. No competition rule was
+  written — it is the resource.
+- **Overgrazing.** Regions can now be drawn below their equilibrium by the life on
+  them, rather than only by noise.
+
+$D_r$ is deliberately **not** clamped: the feedback is self-limiting, because a
+drawn-down region is a worse habitat, which slows growth, which lowers the draw.
+
+> **Resolution caveat.** $R$ is rounded to 3dp each tick, so a draw under $0.0005$
+> — a thin region at the default scale — contributes nothing on any single tick and
+> only tells across many. The coupling is blunter for sparse regions than the
+> arithmetic suggests; the busy ones carry it.
 
 **Stability** adds a resource-pressure term — a resource-rich region is easier to
 stabilise, capped both ways:
@@ -110,7 +145,27 @@ A resource move of $\ge\text{resourceShiftThreshold}$ in one tick emits a
 
 **Constants** ([`RegionRules`](../backend/app/simulation/rules.py#L22)):
 $\bar E=0.56,\ \bar R=0.52,\ \bar S=0.58$; reversion $k_E=0.018,\ k_R=0.02,\ k_S=0.026$;
-collapse $S<0.16 \wedge R<0.18$; recovery $S\ge0.34, R\ge0.32, E\ge0.3$.
+collapse $S<0.16 \wedge R<0.18$; recovery $S\ge0.34, R\ge0.32, E\ge0.3$;
+consumptionPressureScale $=400{,}000$.
+
+> **The collapse band is not reachable by drift, and that is why §8 exists.**
+> Over 10,000 ticks on the base seed, **not one** region collapses on its own,
+> **not one** resource shift fires organically, and **not one** species declines
+> organically — 0, not "rare". The thresholds sit outside what the dynamics can
+> produce: `resourceShiftThreshold` asks for a $0.16$ move in one tick when the
+> largest possible is $\approx0.05$ (walk $\pm0.04$ plus reversion $\pm0.01$),
+> and collapse needs $S<0.16$ when $S$'s equilibrium is $0.58$ and the only term
+> that could pull it down — the resource-pressure term below — is clamped by
+> `resourceStabilityBonusCap` $=0.02$ to a contribution of $0.00036$/tick, giving
+> $S^\ast=0.566$ for a region with *no resources at all*.
+>
+> So 91% of the chronicle is the scripted §8 beats, and the ecological rules that
+> were meant to generate drama are decorative. The consumer–resource draw above is
+> the first half of the fix (the world can now be depleted); making depletion
+> *destabilise* a region is the second, and it needs its own calibration pass —
+> measured, the coupling that produces organic collapse also kills the world,
+> because collapse costs $-0.09$ growth against a median growth of $+0.006$ and
+> a median habitat fit only $+0.044$ above the growth baseline. See `sira.md`.
 
 ---
 

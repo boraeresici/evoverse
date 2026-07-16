@@ -36,6 +36,24 @@ class RegionRules:
     resource_stability_baseline: float = 0.4
     resource_stability_bonus_cap: float = 0.02
     resource_stability_factor: float = 0.018
+    # Consumer-resource coupling: what a region's populations draw out of it each
+    # tick, as sum(population * energy_consumption) / scale. Without this the
+    # regions drifted on their own noise no matter how much life they carried —
+    # life was a passenger, `Population.energy_consumption` was computed, stored
+    # and served but read by nothing, and nothing could ever deplete.
+    #
+    # Scale is the divisor that turns a headcount into a resource draw. For
+    # reference, regrowth (reversion toward equilibrium) tops out at
+    # resource_reversion_factor * resource_equilibrium = 0.0104/tick, and the
+    # busiest region on the base seed carries sum(N*c) ~ 2500. The two meet near
+    # scale = 250k, so anything far above that is a rounding error and anything
+    # far below strips the map bare.
+    #
+    # `resource_density` is rounded to 3dp every tick, so a draw under 0.0005 —
+    # a thin region, at this scale — contributes nothing on any *single* tick and
+    # only tells across many. The coupling is therefore blunter for sparse regions
+    # than the arithmetic suggests; the busy ones carry it.
+    consumption_pressure_scale: float = 400000
     collapsed_stability_penalty: float = 0.006
     collapsed_energy_penalty: float = 0.004
     mutation_stability_penalty_factor: float = 0.08
