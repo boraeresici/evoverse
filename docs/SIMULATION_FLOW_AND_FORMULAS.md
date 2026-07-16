@@ -28,7 +28,9 @@ one **species** in that region). Symbols used throughout:
 | $N$ | population count of a species in a region | $\ge 0$ | `Population.population_count` |
 | $g$ | per-tick growth rate | — | `Population.growth_rate` |
 | $c_s$ | species handedness | $\{-1,0,+1\}$ | `Species.chirality` |
-| $H$ | universe homochirality index | $[0,1]$ | `Universe.homochirality_index` |
+| $H$ | universe homochirality index — *global* single-handedness, $\lvert\text{mean }\mathit{ee}\rvert$ | $[0,1]$ | `Universe.homochirality_index` |
+| $L$ | local order index — $\text{mean }\lvert \mathit{ee}\rvert$, blind to whether regions agree | $[0,1]$ | `Universe.local_order_index` |
+| $\beta$ | universe-wide symmetry-breaking field strength | — | `ChiralityRules.field_strength` |
 
 Two clamps are used everywhere:
 
@@ -116,13 +118,28 @@ Full spec and scientific mapping live in
 [`CHIRALITY_AND_MIND.md` §6.1–6.3](./CHIRALITY_AND_MIND.md). Summary of the update
 ([engine.py:186](../backend/app/simulation/engine.py#L186)):
 
+**Field.** The universe carries one uniform symmetry-breaking field — the analogue
+of Ozturk & Sasselov's magnetized surface. Its sign is drawn once per seed
+(`stable_rng(seed, "chirality-field")`), so *which* hand a universe gets is
+contingent, but every region feels the same push:
+
+$$B = \pm1 \ \text{(per seed)},\qquad \text{field} = \beta\,B,\quad \beta=\text{fieldStrength}$$
+
 **Bifurcation.** Each *unlocked* region runs a pitchfork step — the cubic term
 $\mathit{ee}(1-\mathit{ee}^2)$ makes $0$ an unstable fixed point and $\pm1$ stable,
-so any tiny bias self-amplifies. Noise shrinks to $0$ as $|\mathit{ee}|\to1$:
+so any tiny bias self-amplifies. Noise shrinks to $0$ as $|\mathit{ee}|\to1$; the
+field does **not** (it is external, not a property of the region's state):
 
 $$\text{noise} = (2\rho-1)\cdot\text{noiseScale}\cdot(1-|\mathit{ee}|),\quad \rho\sim U(0,1)$$
 
-$$\mathit{ee} \leftarrow \operatorname{clamp}_\pm\!\big(\mathit{ee} + k\,\mathit{ee}(1-\mathit{ee}^2) + \text{noise}\big),\quad k=\text{amplifyK}$$
+$$\mathit{ee} \leftarrow \operatorname{clamp}_\pm\!\big(\mathit{ee} + k\,\mathit{ee}(1-\mathit{ee}^2) + \beta B + \text{noise}\big),\quad k=\text{amplifyK}$$
+
+Without $\beta B$ the cubic term amplifies whichever way each region's *local*
+noise happened to push, and the map freezes into opposing domains: every region
+locked, none agreeing. The field is what makes the outcome *homochiral* rather
+than merely locked. Measured over 10 seeds at 400 ticks: $\beta=0$ gives 0/10
+single-handed universes (≈5 domains each), $\beta=0.002$ gives 6/10, and
+$\beta=0.005$ gives 10/10.
 
 **Lock.** When $|\mathit{ee}|\ge\text{eeLockThreshold}$ the region latches
 irreversibly to $\operatorname{sign}(\mathit{ee})$ (`chirality_locked = True`).
@@ -133,7 +150,8 @@ broken hand spreads across the map. Then lineages adopt their origin region's ha
 (one-way; §6.2) and the universe metrics recompute (§7).
 
 **Constants** ([`ChiralityRules`](../backend/app/simulation/rules.py#L112)):
-$k=0.06$, noiseScale $=0.03$, lock $=0.9$, bleed $=0.05$, avalancheMinSource $=0.75$.
+$k=0.06$, noiseScale $=0.03$, $\beta=0.005$, lock $=0.9$, bleed $=0.05$,
+avalancheMinSource $=0.75$.
 
 ---
 
@@ -238,9 +256,27 @@ mean region stability, penalised by the share of collapsed regions:
 $$\text{stabilityIndex} = \operatorname{clamp}\!\left(\frac{1}{|\mathcal R|}\sum_{r} S_r - \frac{|\{r:\text{collapsed}\}|}{|\mathcal R|}\cdot\text{collapseRatioStabilityPenalty}\right)$$
 
 **Homochirality** ([seeder.py:62](../backend/app/simulation/seeder.py#L62)) — over
-non-collapsed regions ($0$ = racemic, $1$ = fully single-handed):
+non-collapsed regions $\mathcal R'$:
 
-$$H = \frac{1}{|\mathcal R'|}\sum_{r\in\mathcal R'}|\mathit{ee}_r| \qquad \mathit{ee}_{\text{universe}}=\frac{1}{|\mathcal R'|}\sum_{r\in\mathcal R'}\mathit{ee}_r$$
+$$\mathit{ee}_{\text{universe}}=\frac{1}{|\mathcal R'|}\sum_{r\in\mathcal R'}\mathit{ee}_r \qquad
+H = \big|\mathit{ee}_{\text{universe}}\big| \qquad
+L = \frac{1}{|\mathcal R'|}\sum_{r\in\mathcal R'}|\mathit{ee}_r|$$
+
+$H$ (`homochirality_index`) is the **global** single-handedness and is what the
+Era gate reads: $1$ only when every region agrees on one hand. $L$
+(`local_order_index`) is how far regions are from racemic *locally*, blind to
+whether they agree. `domain_count` is the number of connected same-hand regions
+(von Neumann adjacency, collapsed regions excluded and acting as holes);
+$\text{domain\_count}=1$ is the real signature of homochirality.
+
+> **Why $H$ is not $L$.** $L$ is the mean of *absolute* values, so a map split
+> into equal and opposite domains scores $L=1$ — "fully homochiral" — while being
+> globally racemic ($H=0$). Before the field term (§4) this was the *typical*
+> outcome, not an edge case: on the base seed, 54 regions locked right and 54
+> left, $L=1.0$, $H=0.0$, and the old $L$-based gate handed that universe the
+> Stabilization Era. Life's homochirality is a global property — all of it runs
+> on one hand — so the gate must measure the global one. The gap $L-H$ is exactly
+> the domain problem, which is why both are kept.
 
 **Era gate** ([engine.py:633](../backend/app/simulation/engine.py#L633)) — eras are
 **earned and monotonic** (never seeded, never lost):
@@ -252,6 +288,16 @@ $$\begin{aligned}
 
 Because no lineage locks a mind until the cognitive tier (T2) ships, Intelligence
 is currently unreachable by design — see [§6.4](./CHIRALITY_AND_MIND.md).
+
+> **Monotonicity now comes from the rank guard, not from the metric.** When $H$
+> was $L$ (mean $|ee|$) it could only ever rise, because locking pins $|ee|$ at
+> $1$ — the index was monotone by construction. Global $H$ is **not**: a region
+> locking against the current majority *lowers* it. Eras are still never lost,
+> but only because `_advance_era` compares `_ERA_RANK` and refuses to move
+> backward. The gate is now genuinely failable — a universe that never picks one
+> hand never earns Stabilization (§4, $\beta=0$) — which is the point: a gate
+> that always passes is not a gate. On the base seed with the default field,
+> Stabilization is earned around tick 44.
 
 ---
 

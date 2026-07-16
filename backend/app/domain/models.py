@@ -66,12 +66,28 @@ class Universe:
     tick: int
     stability_index: float
     # Chirality field (T1). ``chirality_ee`` is the global net handedness in
-    # [-1, +1] (0 = racemic); ``homochirality_index`` is mean |ee| across regions
-    # in [0, 1] and is the maturity metric the product reads. Once ``chirality_locked``
-    # latches, the universe has crossed the molecular symmetry break irreversibly.
+    # [-1, +1] (0 = racemic).
+    #
+    # ``homochirality_index`` = |mean ee| over non-collapsed regions, in [0, 1].
+    # This is the maturity metric the product and the Era gate read: it is 1 only
+    # when *every* region shares one hand. It is deliberately NOT mean |ee| —
+    # that measures local order and reads 1.0 for a universe split into equal and
+    # opposite domains, i.e. a globally racemic world. Life's homochirality is a
+    # global property (all of it runs on one hand), so the gate must measure the
+    # global one.
+    #
+    # ``local_order_index`` = mean |ee| — how far regions are from racemic
+    # *locally*, ignoring whether they agree. Kept as a diagnostic: the gap
+    # between it and ``homochirality_index`` is exactly the domain problem.
+    # ``domain_count`` = connected same-hand regions; 1 means a single hand won.
+    #
+    # Once ``chirality_locked`` latches, every viable region has broken symmetry
+    # irreversibly — but note that says nothing about them agreeing.
     # See docs/CHIRALITY_AND_MIND.md.
     chirality_ee: float = 0.0
     homochirality_index: float = 0.0
+    local_order_index: float = 0.0
+    domain_count: int = 0
     chirality_locked: bool = False
 
 

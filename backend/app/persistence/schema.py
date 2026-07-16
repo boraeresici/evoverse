@@ -40,6 +40,8 @@ universes = Table(
     Column("stability_index", Numeric(6, 3), nullable=False),
     Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
     Column("homochirality_index", Numeric(6, 4), nullable=False, default=0),
+    Column("local_order_index", Numeric(6, 4), nullable=False, default=0),
+    Column("domain_count", Integer, nullable=False, default=0),
     Column("chirality_locked", Boolean, nullable=False, default=False),
 )
 

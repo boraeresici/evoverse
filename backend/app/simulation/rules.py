@@ -120,6 +120,16 @@ class ChiralityRules:
     seed_bias_max: float = 0.02
     amplify_k: float = 0.06
     noise_scale: float = 0.03
+    # Universe-wide symmetry-breaking field — the analogue of Ozturk & Sasselov's
+    # magnetized surface (CISS). Without it, each region's hand is set by its own
+    # local noise and the map freezes into opposing domains: locally locked,
+    # globally racemic. A uniform field makes every region fall the same way, so
+    # one hand wins everywhere — which is the whole point of the magnetic
+    # mechanism, and why life is L-handed *everywhere* rather than in patches.
+    # Measured on the 10-seed sweep: 0.0 -> 0/10 single-handed universes,
+    # 0.002 -> 6/10, 0.005 -> 10/10. The field's sign is drawn per seed, so which
+    # hand a universe gets stays contingent while being global.
+    field_strength: float = 0.005
     ee_lock_threshold: float = 0.9
     avalanche_bleed: float = 0.05
     avalanche_min_source: float = 0.75

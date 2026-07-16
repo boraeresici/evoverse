@@ -59,24 +59,70 @@ def seed_alpha(seed: int = 4211, width: int = 12, height: int = 9) -> AlphaState
     return state
 
 
+def _count_chirality_domains(regions: list[Region]) -> int:
+    """Connected same-hand regions (von Neumann adjacency, matching the avalanche).
+
+    A diagnostic, not a driver. ``1`` means one hand won the whole map — real
+    homochirality. Anything higher is a chiral glass: locked, locally ordered,
+    globally racemic. Collapsed regions are excluded and act as holes, so they
+    break connectivity rather than bridging two opposite domains.
+    """
+    by_coord = {(region.x, region.y): region for region in regions}
+    seen: set[tuple[int, int]] = set()
+    domains = 0
+    for coord, region in by_coord.items():
+        if coord in seen:
+            continue
+        domains += 1
+        hand = _hand_of(region.chirality_ee)
+        stack = [coord]
+        seen.add(coord)
+        while stack:
+            x, y = stack.pop()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                neighbor_coord = (x + dx, y + dy)
+                neighbor = by_coord.get(neighbor_coord)
+                if neighbor is None or neighbor_coord in seen:
+                    continue
+                if _hand_of(neighbor.chirality_ee) != hand:
+                    continue
+                seen.add(neighbor_coord)
+                stack.append(neighbor_coord)
+    return domains
+
+
+def _hand_of(ee: float) -> int:
+    if ee > 0:
+        return 1
+    if ee < 0:
+        return -1
+    return 0
+
+
 def _recalculate_universe_chirality(state: AlphaState) -> None:
     """Aggregate region handedness into the universe-level maturity metrics.
 
-    ``chirality_ee`` is the mean signed handedness; ``homochirality_index`` is the
-    mean |ee| over non-collapsed regions (0 = racemic, 1 = fully homochiral).
-    Kept identical in seeder and engine so genesis and ticks agree.
+    ``chirality_ee`` is the mean signed handedness. ``homochirality_index`` is
+    |mean ee| — the *global* single-handedness the Era gate reads, 1 only when
+    every region agrees. ``local_order_index`` is mean |ee| — local order,
+    blind to agreement. ``domain_count`` is the number of same-hand regions.
+    All are computed over non-collapsed regions, and kept identical in seeder and
+    engine so genesis and ticks agree. See docs/CHIRALITY_AND_MIND.md §6.4.
     """
     regions = [region for region in state.regions.values() if not region.collapsed]
     if not regions:
         state.universe.chirality_ee = 0.0
         state.universe.homochirality_index = 0.0
+        state.universe.local_order_index = 0.0
+        state.universe.domain_count = 0
         return
-    state.universe.chirality_ee = round(
-        sum(region.chirality_ee for region in regions) / len(regions), 4
-    )
-    state.universe.homochirality_index = round(
+    mean_ee = sum(region.chirality_ee for region in regions) / len(regions)
+    state.universe.chirality_ee = round(mean_ee, 4)
+    state.universe.homochirality_index = round(abs(mean_ee), 4)
+    state.universe.local_order_index = round(
         sum(abs(region.chirality_ee) for region in regions) / len(regions), 4
     )
+    state.universe.domain_count = _count_chirality_domains(regions)
     state.universe.chirality_locked = all(region.chirality_locked for region in regions)
 
 

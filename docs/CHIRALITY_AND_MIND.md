@@ -126,7 +126,9 @@ excess ∈ `[-1, +1]`: `0` = racemic (no information), `+1`/`-1` = fully right/l
 class Universe:
     ...
     chirality_ee: float = 0.0          # global net handedness (mean of regions)
-    homochirality_index: float = 0.0   # mean |ee| across regions, 0..1
+    homochirality_index: float = 0.0   # |mean ee| — GLOBAL single-handedness, 0..1
+    local_order_index: float = 0.0     # mean |ee| — local order, blind to agreement
+    domain_count: int = 0              # connected same-hand regions; 1 = one hand won
     chirality_locked: bool = False     # T1 gate latched (irreversible)
 
 @dataclass(slots=True)
@@ -150,8 +152,18 @@ class Species:
 is defined at three scopes:
 
 - **Region:** `|region.chirality_ee|`.
-- **Universe:** `mean(|region.chirality_ee|)` over non-collapsed regions.
+- **Universe:** `|mean(region.chirality_ee)|` over non-collapsed regions.
 - **Species:** `1 - heterochiral_load` (how cleanly the lineage carries one hand).
+
+> **The universe scope is `|mean ee|`, not `mean |ee|` — and the difference is the
+> whole subsystem.** `mean |ee|` measures *local* order: it reads `1.0` for a map
+> split into equal and opposite domains, every region pure, none agreeing — a
+> chiral glass, which is globally racemic. That is not a corner case; before the
+> field term (§6.1) it was what actually happened on every seed measured. Life's
+> homochirality is global — all of it runs on one hand — so the maturity metric
+> and the Era gate must be global. `mean |ee|` is kept as `local_order_index`
+> because the gap between the two *is* the domain problem, and `domain_count`
+> names it directly.
 
 ---
 
@@ -169,6 +181,7 @@ class ChiralityRules:
     seed_bias_max: float = 0.02          # |initial ee| drawn from stable_rng(seed,"chirality")
     amplify_k: float = 0.06              # bifurcation gain; catalyst can raise this
     noise_scale: float = 0.03            # racemic-zone jitter, damped by |ee|
+    field_strength: float = 0.005        # universe-wide field (the magnetized surface)
     ee_lock_threshold: float = 0.90      # |ee| at/above which the region latches
     # --- avalanche: locked region magnetizes neighbours (arXiv:2304.09095) ---
     avalanche_bleed: float = 0.05        # ee pushed to adjacent regions per tick
@@ -210,16 +223,39 @@ replayable.
 
 ### 6.1 Molecular bifurcation + avalanche lock (T1)
 
+The universe carries one **uniform field** — the direct analogue of Öztürk's
+magnetized surface. Its sign is drawn once per seed and applies to every region:
+
+```
+B = +1 or -1, from stable_rng(seed, "chirality-field")   # contingent, but global
+field = field_strength * B
+```
+
 For each **unlocked** region, per tick:
 
 ```
 r   = stable_rng(seed, "chirality", region.id, tick)
-noise = (r.random()*2 - 1) * noise_scale * (1 - |ee|)
-ee += amplify_k * ee * (1 - ee**2) + noise          # pitchfork bifurcation
+noise = (r.random()*2 - 1) * noise_scale * (1 - |ee|)    # fades as the region commits
+ee += amplify_k * ee * (1 - ee**2) + field + noise       # pitchfork, biased by the field
 if |ee| >= ee_lock_threshold:
     region.chirality_ee   = sign(ee)                 # snap to full hand
     region.chirality_locked = True                   # irreversible latch
 ```
+
+**Why the field is load-bearing, not decoration.** Öztürk's contribution is not
+that symmetry breaks — Frank showed autocatalysis alone does that in 1953 — it is
+that a *global field* breaks it the **same way everywhere**, which is why life is
+L-handed across the whole planet rather than in patches. Without `field`, each
+region amplifies whichever way its own local noise pushed, and the map freezes
+into opposing domains: locked, locally pure, globally racemic. Measured over 10
+seeds at 400 ticks: `field_strength = 0` gives **0/10** single-handed universes
+(≈5 domains each); `0.002` gives 6/10; `0.005` gives **10/10**. Noise is damped by
+`(1 - |ee|)` because it is a property of the region's own racemic jitter; the
+field is not damped, because it is external and does not care how committed the
+region already is.
+
+The hand stays **contingent** — different seeds land on different hands — while
+being **global**. That is the combination the mechanism exists to produce.
 
 Then **avalanche**: every locked region with `|ee| >= avalanche_min_source` pushes
 `avalanche_bleed * sign(ee)` into each adjacent region's `ee` (neighbours from the
@@ -261,6 +297,24 @@ Net effect: species are driven to migrate toward regions of their own hand, or d
 A flipped-hand mutant is almost always lethal — exactly Öztürk's point that mixed
 chirality cannot store heritable information.
 
+> **Measured: this rule is a transient, not a standing pressure.** On the base
+> seed, mismatched populations exist only while regions are still locking — 17 at
+> tick 60, 4 at tick 100, **0 from tick 140 onward, permanently**. Once every
+> region has latched and every lineage has adopted a hand, the system is in an
+> absorbing state: mismatch can no longer arise, because the mismatched
+> populations are already dead and hands never change. In a 10,000-tick run,
+> heterochiral selection does all of its work in the first ~80 ticks and is inert
+> for the remaining ~9,900.
+>
+> That is the correct behaviour, not a bug — a symmetry break is a one-time event
+> and this rule is what *enforces* it — but it means the subsystem must not be
+> read as an ongoing ecological force. With the field on (§6.1) the only thing
+> that can ever reawaken it is the `inherit_flip_chance` mutant, which now has no
+> same-hand refuge anywhere on the map and dies wherever it appears. Before the
+> field, a flipped mutant could migrate into an opposite-hand domain and survive —
+> the domains were quietly making the flip mutation *survivable*, which is the
+> opposite of the thesis this rule exists to express.
+
 ### 6.4 Two-tier Era gate — *implemented*
 
 Previously `current_era` was set once to `Era.EXPANSION` in
@@ -275,11 +329,26 @@ if rank(era) < rank(INTELLIGENCE) and idx >= mind_gate_index and any lineage min
     era = INTELLIGENCE                      # T2 achieved: life -> mind
 ```
 
-Progression is **monotonic** (an era is never lost — locked ee keeps the index from
-falling) and each transition emits one `ERA_ADVANCED` event. So **maturity is
-homochirality**, and the Intelligence Era is *earned*, not seeded — it stays
-unreachable until the T2 tier (§6.5) sets `Species.mind_locked`. On the base seed,
-Stabilization is earned around tick 66 (index ≥ `life_gate_index` = 0.80).
+Progression is **monotonic** (an era is never lost) and each transition emits one
+`ERA_ADVANCED` event. So **maturity is homochirality**, and the Intelligence Era is
+*earned*, not seeded — it stays unreachable until the T2 tier (§6.5) sets
+`Species.mind_locked`. On the base seed, Stabilization is earned around tick 44
+(index ≥ `life_gate_index` = 0.80).
+
+> **Monotonicity is enforced, not inherited.** This document used to say an era is
+> never lost *because locked ee keeps the index from falling*. That was true only
+> while the index was `mean |ee|`, which locking pins at 1 and which therefore
+> could not fall. Global `|mean ee|` **can** fall: a region latching against the
+> current majority drags it down. Eras survive that only because `_advance_era`
+> compares `_ERA_RANK` and refuses to move backward — the guard is doing the work
+> the metric used to do for free.
+>
+> The flip side is the point of the change: the gate can now be **failed**. With
+> `field_strength = 0`, the base seed locks every region, reaches
+> `local_order_index = 1.0`, and still never leaves Expansion, because its 108
+> regions never agree on a hand. Under the old metric that same universe scored
+> `1.0` and was handed the Stabilization Era at tick 68. A gate that always passes
+> is not a gate; this one now discriminates.
 
 ### 6.5 Cognitive homochirality (T2)
 
@@ -397,5 +466,11 @@ keep the "it validates us" language out. Convergence is a compass, not a certifi
    (homochirality) and Stabilization → Intelligence (homochirality + a mind-locked
    lineage, so unreachable until T2), monotonically, with an `ERA_ADVANCED` event.
    `current_era` was already persisted. Covered in `backend/tests/test_chirality.py`.
+3b. **Global field + global metric — DONE:** `field_strength` (§6.1) makes the
+   break homochiral rather than merely locked (0/10 → 10/10 single-handed universes
+   across seeds), and `homochirality_index` became `|mean ee|` with
+   `local_order_index` / `domain_count` alongside it (§4, §6.4). Together these fix
+   a gate that previously handed the Stabilization Era to globally racemic
+   universes. Covered in `backend/tests/test_chirality.py`.
 4. **Organism Lens** (three.js) reading the maturity metric (§8).
 5. **T2 cognitive tier (§6.5)** + the Lens's world-model mode.

@@ -350,6 +350,7 @@ class AlphaStore:
                 "regions": len([r for r in state.regions.values() if not r.collapsed]),
                 "species": len(state.species),
                 "seed": self._seed,
+                "domainCount": state.universe.domain_count,
             }
 
         scan = self._repository.diagnostics_run("scale_free_scan") if self._repository else None

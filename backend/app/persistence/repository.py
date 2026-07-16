@@ -175,6 +175,8 @@ class AlphaStateRepository:
                 stability_index=float(universe_row["stability_index"]),
                 chirality_ee=float(universe_row["chirality_ee"]),
                 homochirality_index=float(universe_row["homochirality_index"]),
+                local_order_index=float(universe_row["local_order_index"]),
+                domain_count=int(universe_row["domain_count"]),
                 chirality_locked=bool(universe_row["chirality_locked"]),
             ),
             regions={
@@ -365,6 +367,8 @@ class AlphaStateRepository:
                     "stability_index": state.universe.stability_index,
                     "chirality_ee": state.universe.chirality_ee,
                     "homochirality_index": state.universe.homochirality_index,
+                    "local_order_index": state.universe.local_order_index,
+                    "domain_count": state.universe.domain_count,
                     "chirality_locked": state.universe.chirality_locked,
                 },
             )
@@ -1733,6 +1737,8 @@ def _insert_snapshot(connection, state: AlphaState) -> None:
             "stability_index": state.universe.stability_index,
             "chirality_ee": state.universe.chirality_ee,
             "homochirality_index": state.universe.homochirality_index,
+            "local_order_index": state.universe.local_order_index,
+            "domain_count": state.universe.domain_count,
             "chirality_locked": state.universe.chirality_locked,
             "active_catalyst_actions": len(state.catalyst_actions),
             "region_snapshot_count": len(state.regions),

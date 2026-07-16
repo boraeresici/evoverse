@@ -183,25 +183,41 @@ class SimulationEngine:
                     payload=catalyst_context,
                 )
 
+    def _field_direction(self, state: AlphaState) -> int:
+        """The hand this universe's symmetry-breaking field points toward.
+
+        Drawn once per seed, uniform across the map: contingent (this universe
+        could have gone either way) but global (every region feels the same
+        push). That combination is what turns local symmetry breaking into a
+        single planetary hand. See docs/CHIRALITY_AND_MIND.md §6.1.
+        """
+        return 1 if stable_rng(state.seed, "chirality-field").random() < 0.5 else -1
+
     def _advance_chirality(self, state: AlphaState) -> None:
         """Molecular symmetry breaking (T1). See docs/CHIRALITY_AND_MIND.md §6.1.
 
-        Each unlocked region drifts through a pitchfork bifurcation, then latches
-        irreversibly once |ee| crosses the lock threshold. A locked, strongly
-        handed region then magnetizes its unlocked neighbours (avalanche), so a
-        single broken hand spreads across the map.
+        Each unlocked region drifts through a pitchfork bifurcation biased by the
+        universe's uniform field, then latches irreversibly once |ee| crosses the
+        lock threshold. A locked, strongly handed region then magnetizes its
+        unlocked neighbours (avalanche), so the hand spreads across the map.
+
+        The field is what makes the result *homochiral* rather than merely
+        locked: without it the cubic term amplifies whichever way local noise
+        happened to push, and the map freezes into opposing domains.
         """
         rules = self.rules.chirality
         locked_before = sum(region.chirality_locked for region in state.regions.values())
         newly_locked: list[Region] = []
+        field = rules.field_strength * self._field_direction(state)
 
         for region in state.regions.values():
             if region.chirality_locked:
                 continue
             rng = stable_rng(state.seed, "chirality-drift", state.universe.tick, region.id)
             ee = region.chirality_ee
+            # Noise fades as a region commits; the field does not — it is external.
             noise = (rng.random() * 2 - 1) * rules.noise_scale * (1 - abs(ee))
-            ee = clamp_signed(ee + rules.amplify_k * ee * (1 - ee * ee) + noise)
+            ee = clamp_signed(ee + rules.amplify_k * ee * (1 - ee * ee) + field + noise)
             if abs(ee) >= rules.ee_lock_threshold:
                 region.chirality_ee = math.copysign(1.0, ee)
                 region.chirality_locked = True

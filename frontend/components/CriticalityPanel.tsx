@@ -132,7 +132,7 @@ export function CriticalityPanel({ data }: { data: DiagnosticsData }) {
           Plain counts — nothing inferred, so nothing to over-claim. When a world starts organising,
           shapes recur: unrelated lineages arrive at the same body plan.
         </PlateHead>
-        <CensusTiles census={census} species={universe.species} />
+        <CensusTiles census={census} species={universe.species} domainCount={universe.domainCount} />
       </section>
 
       <section className="crit-plate">
@@ -484,10 +484,12 @@ function Withheld({ label, why, aside }: { label: string; why: string; aside: st
 
 function CensusTiles({
   census,
-  species
+  species,
+  domainCount
 }: {
   census: DiagnosticsData["census"];
   species: number;
+  domainCount: number;
 }) {
   const topMorph = census.morphotypes.top[0];
   const topSpatial = census.spatialMotifs.top[0];
@@ -512,6 +514,15 @@ function CensusTiles({
         k="Commonest map arrangement"
         v={`${topSpatial?.count ?? 0} regions`}
         d={`of ${census.spatialMotifs.distinct} arrangements`}
+      />
+      <Tile
+        k="Handedness"
+        v={domainCount === 1 ? "one hand" : `${domainCount} hands`}
+        d={
+          domainCount === 1
+            ? "every region has settled on the same one"
+            : "still split across separate hand-domains"
+        }
       />
     </div>
   );

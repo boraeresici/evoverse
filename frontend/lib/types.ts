@@ -9,6 +9,8 @@ export type UniverseStatus = {
   stabilityIndex: number;
   chiralityEe: number;
   homochiralityIndex: number;
+  localOrderIndex: number;
+  domainCount: number;
   chiralityLocked: boolean;
 };
 
@@ -590,6 +592,8 @@ export type DiagnosticsData = {
     regions: number;
     species: number;
     seed: number;
+    /** Connected same-hand region clusters; 1 means a single hand won the whole map. */
+    domainCount: number;
   };
   correlation: Record<string, CorrelationField>;
   census: {
