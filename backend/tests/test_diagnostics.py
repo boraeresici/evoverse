@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.simulation import SimulationEngine, seed_alpha
 from app.simulation.diagnostics import (
     DEFAULT_FIELDS,
+    _region_field_value,
     condition_vector,
     correlation_field,
     correlation_length,
@@ -32,10 +33,68 @@ def test_correlation_field_subtracts_the_mean_and_finds_a_crossing() -> None:
     assert result["curve"], "expected a non-empty C(r) curve"
     # ξ is a real distance in the world, never negative.
     assert result["xi"] >= 0.0
-    # The mean-subtraction constraint (∑ δφ = 0) forces C(r) to leave the positive
-    # region: either it crosses zero (ξ interpolated) or it is flagged saturated.
-    crosses = any(c < 0 for _, c in result["curve"])
-    assert crosses or result["saturated"]
+    # The mean-subtraction constraint (∑ δφ = 0) forces C(r) below zero somewhere —
+    # there is no "never crossed" outcome to fall back on.
+    assert any(c < 0 for _, c in result["curve"])
+    assert not result["degenerate"]
+
+
+def test_correlation_field_obeys_the_cavagna_sum_rule() -> None:
+    """The paper's constraint, and the reason a zero-crossing always exists.
+
+    For fluctuations u (mean subtracted), Cavagna et al. give
+
+        int_0^L dr sum_ij u_i.u_j delta(r - r_ij) = (sum_i u_i).(sum_j u_j) = 0
+
+    correlation_field pairs each i<j once, so the same identity reads
+    sum_{i<j} d_i d_j = -n*c0/2 — strictly negative, which is what forces C(r)
+    below zero. If this drifts, ξ is measuring something other than correlation.
+    """
+    state = _advanced_state()
+    regions = sorted(
+        (r for r in state.regions.values() if not r.collapsed), key=lambda r: r.id
+    )
+    n = len(regions)
+    for field in DEFAULT_FIELDS:
+        values = [_region_field_value(state, region, field) for region in regions]
+        mean = sum(values) / n
+        deltas = [value - mean for value in values]
+        c0 = sum(d * d for d in deltas) / n
+        if c0 == 0:
+            continue
+        total = sum(
+            deltas[i] * deltas[j]
+            for i in range(n)
+            for j in range(i + 1, n)
+        )
+        expected = -0.5 * n * c0
+        assert abs(total - expected) / abs(expected) < 1e-9, field
+
+
+def test_floored_xi_is_flagged_rather_than_reported_as_a_measurement() -> None:
+    state = _advanced_state()
+    for field in DEFAULT_FIELDS:
+        result = correlation_field(state, field)
+        if result["degenerate"]:
+            continue
+        first_r, first_c = result["curve"][0]
+        # Already negative at the shortest distance means the crossing sits below
+        # one lattice step: integer distances cannot resolve it, so ξ is a bound.
+        assert result["xiFloored"] == (first_c < 0), field
+        if result["xiFloored"]:
+            assert result["xi"] == float(first_r), field
+
+
+def test_correlation_field_ships_pair_counts_with_the_curve() -> None:
+    state = _advanced_state()
+    result = correlation_field(state, "stability")
+    pairs = dict(result["pairs"])
+
+    assert [r for r, _ in result["curve"]] == [r for r, _ in result["pairs"]]
+    # Pair count collapses toward the lattice diagonal — that is the whole reason
+    # the tail of C(r) is unreadable, so a consumer has to be able to see it.
+    assert pairs[max(pairs)] < pairs[min(pairs)]
+    assert sum(pairs.values()) == result["sampleSize"] * (result["sampleSize"] - 1) // 2
 
 
 def test_correlation_length_covers_every_default_field() -> None:
@@ -60,11 +119,13 @@ def test_scale_free_scan_reports_points_and_a_verdict() -> None:
         4211, 300, sizes=[(12, 9), (16, 12), (20, 15)], field="stability"
     )
     assert [p["L"] for p in scan["points"]] == [12, 16, 20]
+    # No "super_critical": the sum rule forbids the no-crossing state it keyed on.
     assert scan["verdict"] in {
         "critical",
         "sub_critical",
-        "super_critical",
         "intermediate",
+        "underpowered",
+        "degenerate",
         "insufficient",
     }
     for point in scan["points"]:

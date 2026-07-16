@@ -66,10 +66,23 @@ def correlation_field(
     """C(r) and ξ for one scalar field, over non-collapsed regions.
 
     δφ(i) = φ(i) − mean(φ); C(r) is the mean of δφ(i)·δφ(j) over region pairs at
-    distance r, normalised so C(0) = 1. ξ is the first zero-crossing of C(r) (which
-    ``∑ δφ = 0`` guarantees exists), linearly interpolated. If C(r) never crosses,
-    the field is saturated/ordered and ξ is reported as the max distance with
-    ``saturated: True``.
+    distance r, normalised so C(0) = 1. ξ is the first zero-crossing of C(r),
+    linearly interpolated.
+
+    The crossing always exists when the field varies at all. Subtracting the mean
+    forces ∑δφ = 0, and Cavagna et al.'s sum rule turns that into
+    ``∑_{i<j} δφ(i)·δφ(j) = −n·c₀/2``, which is strictly negative — so some r must
+    carry a negative C(r). "The curve never crossed" is therefore not a physical
+    state this function can report; a field that is uniform enough to have no
+    crossing has no variance either, and returns early as ``degenerate``.
+
+    Two flags qualify ξ:
+
+    * ``degenerate`` — c₀ = 0. The field is identical everywhere, so there is no
+      fluctuation to correlate. ξ is meaningless, not zero.
+    * ``xiFloored`` — C(r) is already negative at the smallest distance on the
+      lattice. ξ is then a floor, not a measurement: read it as "≤ that distance".
+      Integer distances cannot resolve below one lattice step.
     """
     regions = sorted(
         (region for region in state.regions.values() if not region.collapsed),
@@ -77,14 +90,16 @@ def correlation_field(
     )
     n = len(regions)
     if n < 2:
-        return {"xi": 0.0, "c0": 0.0, "curve": [], "saturated": False, "sampleSize": n}
+        return {"xi": 0.0, "c0": 0.0, "curve": [], "pairs": [], "xiFloored": False,
+                "degenerate": True, "sampleSize": n}
 
     values = [_region_field_value(state, region, field) for region in regions]
     mean = sum(values) / n
     deltas = [value - mean for value in values]
     c0 = sum(delta * delta for delta in deltas) / n
     if c0 == 0:
-        return {"xi": 0.0, "c0": 0.0, "curve": [], "saturated": True, "sampleSize": n}
+        return {"xi": 0.0, "c0": 0.0, "curve": [], "pairs": [], "xiFloored": False,
+                "degenerate": True, "sampleSize": n}
 
     pair_sum: dict[int, float] = defaultdict(float)
     pair_count: dict[int, int] = defaultdict(int)
@@ -99,30 +114,49 @@ def correlation_field(
         for r in sorted(pair_sum)
         if pair_count[r] > 0
     ]
-    xi, saturated = _first_zero_crossing(curve)
+    xi, floored = _first_zero_crossing(curve)
     return {
         "xi": round(xi, 4),
         "c0": round(c0, 6),
         "curve": [[r, round(c, 4)] for r, c in curve],
-        "saturated": saturated,
+        # Pair counts travel with the curve because they decide how much of it is
+        # readable: C(r) is a mean over these, and the count collapses toward the
+        # lattice diagonal (2 pairs at the far corner of a 12x9). Without them a
+        # reader cannot tell the measured span from the tail, where a single
+        # product masquerades as a correlation and can exceed C(0) = 1.
+        "pairs": [[r, pair_count[r]] for r, _ in curve],
+        "xiFloored": floored,
+        "degenerate": False,
         "sampleSize": n,
     }
 
 
 def _first_zero_crossing(curve: list[tuple[int, float]]) -> tuple[float, bool]:
-    """Return (ξ, saturated). ξ = first r where C(r) crosses below zero."""
+    """Return (ξ, floored). ξ = first r where C(r) crosses below zero.
+
+    ``floored`` means C(r) was already negative at the smallest distance, so the
+    crossing sits somewhere below one lattice step and ξ is only an upper bound.
+
+    The sum rule guarantees some C(r) < 0 whenever the field varies, so the loop
+    always finds a crossing — hence no "never crossed" result. Reaching the end
+    would mean the caller passed a curve that violates the rule, so say so rather
+    than invent a ξ.
+    """
     if not curve:
         return 0.0, False
     prev_r, prev_c = curve[0]
     if prev_c < 0:
-        return float(prev_r), False
+        return float(prev_r), True
     for r, c in curve[1:]:
         if c < 0 <= prev_c:
             span = prev_c - c
             frac = prev_c / span if span else 0.0
             return prev_r + (r - prev_r) * frac, False
         prev_r, prev_c = r, c
-    return float(curve[-1][0]), True  # never crossed → ordered/saturated
+    raise ValueError(
+        "C(r) never crossed zero, which the sum rule forbids for a varying field — "
+        "the fluctuation field is not mean-centred"
+    )
 
 
 def correlation_length(
@@ -175,7 +209,8 @@ def scale_free_scan(
                 "L": length,
                 "xi": xi,
                 "xiOverL": round(xi / length, 4) if length else 0.0,
-                "saturated": result["saturated"],
+                "xiFloored": result["xiFloored"],
+                "degenerate": result["degenerate"],
             }
         )
         if result["curve"]:
@@ -232,14 +267,23 @@ def _interp(curve: list[tuple[float, float]], x: float) -> float | None:
 
 
 def _scale_free_verdict(points: list[dict[str, Any]], collapse_error: float | None) -> str:
-    """Heuristic label from how ξ tracks L. Numbers travel with it — judge, don't trust."""
-    usable = [p for p in points if not p["saturated"]]
-    if len(points) >= 2 and len(usable) <= len(points) // 2:
-        return "super_critical"  # most sizes never cross zero → one ordered domain
-    if len(points) < 2:
-        return "insufficient"
-    ls = [p["L"] for p in points]
-    xis = [p["xi"] for p in points]
+    """Heuristic label from how ξ tracks L. Numbers travel with it — judge, don't trust.
+
+    There is deliberately no "super critical / one ordered domain" label. It used to
+    be returned when most sizes produced no zero-crossing, but the sum rule forbids
+    that outcome for any field that varies — the branch could only ever fire on a
+    field with no variance at all, which is ``degenerate``, not ordered.
+    """
+    usable = [p for p in points if not p["degenerate"]]
+    if len(usable) < 2:
+        return "degenerate" if points else "insufficient"
+    # A floored ξ is an upper bound ("≤ one lattice step"), not a measurement. Fit a
+    # slope through mostly-bounds and the slope is a bound too, which is how a run
+    # that resolved nothing still walks away labelled "sub critical".
+    if sum(1 for p in usable if p["xiFloored"]) >= len(usable) / 2:
+        return "underpowered"
+    ls = [p["L"] for p in usable]
+    xis = [p["xi"] for p in usable]
     slope = _least_squares_slope(ls, xis)
     if slope >= 0.25 and (collapse_error is None or collapse_error <= 0.05):
         return "critical"  # ξ grows with L and curves collapse → scale-free
