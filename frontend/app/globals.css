@@ -5842,6 +5842,11 @@ p {
 .crit-equals { color: var(--muted); }
 .crit-table-note { font-size: 0.85rem; color: var(--muted); max-width: 72ch; margin: 0.75rem 0 0; }
 
+/* The hand chip on the micro field — only present once a region has latched. */
+.micro-life-hand {
+  font-weight: 800;
+}
+
 /* Organism Lens — the 3D close-up that unlocks once a lineage carries one hand. */
 .lens-locked,
 .lens-open {

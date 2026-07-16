@@ -211,13 +211,12 @@ export function SpeciesExplorationPanel({
             compact
             events={timeline.map((item) => item.event)}
             eyebrow="Species Micro Replay"
+            inspect={<OrganismLens originRegion={originRegion} species={data.species} />}
             populations={speciesProjection.populations}
             region={speciesProjection.region}
             report={report}
             title="Distribution Field"
           />
-
-          <OrganismLens originRegion={originRegion} species={data.species} />
         </article>
       </div>
     </section>

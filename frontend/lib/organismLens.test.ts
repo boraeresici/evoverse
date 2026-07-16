@@ -4,6 +4,7 @@ import { lensRng } from "./lensRng";
 import {
   deriveBodyParams,
   deriveFormState,
+  regionHandSign,
   resolveLensMode
 } from "./organismLens";
 import type { RegionSummary, SpeciesSummary } from "./types";
@@ -118,6 +119,26 @@ describe("lensRng", () => {
 
   it("refuses to pick from an empty list", () => {
     expect(() => lensRng("pick").pick([])).toThrow();
+  });
+});
+
+describe("regionHandSign", () => {
+  it("reports no hand while the region is still drifting", () => {
+    // The excess is non-zero and even large, but nothing has latched: a drifting
+    // region has no hand to show yet (§8).
+    expect(regionHandSign(makeRegion({ chiralityLocked: false, chiralityEe: 0.85 }))).toBe(0);
+    expect(regionHandSign(makeRegion({ chiralityLocked: false, chiralityEe: -0.85 }))).toBe(0);
+  });
+
+  it("reports the latched hand", () => {
+    expect(regionHandSign(makeRegion({ chiralityLocked: true, chiralityEe: 1 }))).toBe(1);
+    expect(regionHandSign(makeRegion({ chiralityLocked: true, chiralityEe: -1 }))).toBe(-1);
+  });
+
+  it("agrees with the Lens gate: no hand shown means no form to inspect", () => {
+    const racemic = makeRegion({ chiralityLocked: false, chiralityEe: 0.4 });
+    expect(regionHandSign(racemic)).toBe(0);
+    expect(resolveLensMode({ species: makeSpecies(), originRegion: racemic }).mode).toBe("locked");
   });
 });
 

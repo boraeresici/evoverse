@@ -34,6 +34,22 @@ export type LensState = {
 const INSPECTABLE_STATUSES: ReadonlySet<string> = new Set(["stable", "dominant"]);
 
 /**
+ * The hand a region may be *shown* to carry: 0 until it latches, then the sign
+ * of its excess. Not the same as `Math.sign(chiralityEe)` — a drifting region
+ * has a momentary excess that means nothing yet, and §8 is explicit that a
+ * racemic region has no hand to display. Both the micro field and the Lens gate
+ * on this, so they never disagree about whether a hand exists.
+ */
+export function regionHandSign(
+  region: Pick<RegionSummary, "chiralityEe" | "chiralityLocked">
+): number {
+  if (!region.chiralityLocked) {
+    return 0;
+  }
+  return Math.sign(region.chiralityEe);
+}
+
+/**
  * §8's gate. Note what is *not* consulted: the universe's homochirality index.
  * A locked region already implies |ee| = 1 there, so the region's own lock is
  * the operative condition, and the frontend avoids duplicating

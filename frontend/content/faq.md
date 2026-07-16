@@ -47,6 +47,9 @@ They are our words, not the field's. The Science page asks a question borrowed f
 - "Reach" as a single number is the correlation length, written ξ (xi). It is where C(r) first crosses zero: the distance past which agreement stops meaning anything.
 - "Patches" are domains, or clusters — neighbouring regions ruled by the same species. Physics asks whether their sizes follow a power law, P(s) ∝ s^−τ.
 - "At floor" is not a term at all, ours entirely. It means ξ landed at the smallest distance the grid can express, one region across, so the true value sits somewhere below that and only an upper bound can be reported. Distances on a fixed grid are whole numbers; there is nothing between neighbours.
+- The "trend" of reach against world size is the slope of ξ against L. In the starling flocks it came out at ξ ≈ 0.35 L; our threshold for calling it flocking is 0.25, set below the birds' own figure.
+- "Spread across seeds" is the ensemble standard deviation, and the ± we quote on the trend is the standard error of the mean. "The run did not settle it" means the 95% confidence interval straddles a threshold, so both answers remain live.
+- "Seeds" are what the literature would call independent realisations of the same model. The starling paper's twenty-four flocks are its ensemble; ours is eight seeded worlds per size.
 
 The measurement itself is not simplified anywhere. The page checks its own arithmetic against the constraint the starling paper proves, and leaves a number out when the evidence cannot carry it rather than rounding it into confidence. Only the vocabulary is ours.
 
@@ -57,6 +60,22 @@ Because it can compute them and they would not mean anything, and a printed numb
 Two examples. Alpha currently has eleven patches across three distinct sizes; the code can fit a power law to that and reports a 99.9% fit, but a line through three points is a fact about three points, not about Alpha. And the pattern-trigger tables score how much likelier a pattern is under given conditions — when a pattern appears exactly once, under conditions that also appear exactly once, the arithmetic can only return the total number of observations, so a "score of 30" out of 30 observations is the sample size, not a finding.
 
 So those slots stay visibly empty with the requirement written in, rather than greyed out. A faded number is still read.
+
+## What is chirality, and why does Alpha model it?
+
+Chirality is handedness: a shape that cannot be laid onto its mirror image, however you turn it. Your hands are the everyday case. Life on Earth is homochiral — its sugars and amino acids almost all use one hand — and how a 50/50 mixture ever picked a side is a real open question in origin-of-life research.
+
+Alpha models it because handedness is where information starts. A racemic (evenly mixed) world carries nothing: every option is equally available, so nothing is written down. Once a region breaks symmetry and commits to one hand, that hand can be copied, inherited, and got wrong — it becomes heritable information. That is the whole thesis the simulation is built to run: symmetry breaking is what lets information exist at all. See [Science](/science) and the design spec in the repository.
+
+This is a modelling analogue, not a claim about real prebiotic chemistry. The science is orientation, not evidence.
+
+## Why is the organism in the Organism Lens a helix?
+
+Because a helix is the simplest shape that can *show* handedness. A sphere or a cube would look identical to its mirror image, and the lineage's hand — the single thing the Lens exists to make visible — would be invisible. A left-coiled helix cannot be rotated into a right-coiled one. That is what chirality means, drawn.
+
+So the coil is not decoration: its direction is read straight off the lineage's hand. Flip the hand and you get the mirror image. It also echoes where the science lives — DNA and RNA are helices whose handedness is fixed.
+
+A lineage that has not committed to a hand yet renders with no coil at all: a straight body. No hand, no helix.
 
 # Simulation mechanics
 
@@ -88,6 +107,35 @@ Migration. When a region's population and migration pressure are high enough, so
 
 The catalyst applies bounded influence (energy pulse, mutation pulse, resource burst) to a region, subject to quota and cooldown, and then the simulation decides the downstream effect. You nudge conditions; you do not script outcomes. Observation with limited intervention is a deliberate design stance.
 
+## How does a region break symmetry and pick a hand?
+
+Each region starts very nearly racemic, with a tiny random bias, and drifts. The drift is self-amplifying: the further a region leans, the harder it leans, so the balanced middle is unstable and the two extremes are stable. Once its excess passes the lock threshold the region latches to that hand — permanently. A latched region then bleeds its hand into unlatched neighbours, so one broken hand spreads across the map like an avalanche rather than each region deciding alone.
+
+This mirrors the two ingredients in the research the design orients on: a symmetry break, then self-amplification into a lock.
+
+## How does a lineage inherit its handedness?
+
+One way only, and never twice. A lineage starts unhanded. The first time its origin region latches, the lineage adopts that region's hand — and from then on it is fixed. Offspring inherit the parent's hand at speciation. There is a rare mutation (about 1 in 100 new species) that flips it, and it is almost always fatal: the flipped child is born mismatched with its own origin region, and selection removes it.
+
+Chirality is treated as information flowing in one direction — region to lineage to offspring — which is why nothing in the engine ever re-derives a hand once committed.
+
+## What is heterochiral load?
+
+The penalty a lineage pays for living in a region whose hand is the opposite of its own. It is only counted for lineages that have actually committed to a hand: an unhanded lineage is uncommitted, not wrong-handed, and pays nothing.
+
+Load taxes growth in proportion to how strongly the region disagrees, and past a high threshold it is lethal — scrambled handedness stores no viable information. A lineage spread across many regions carries one honest figure, averaged by where its population actually is. In the Organism Lens, load is what makes a body look strained.
+
+## What is the homochirality index, and what unlocks an era?
+
+The homochirality index is how single-handed the universe has become: the average handedness strength across its living regions, from 0 (racemic, no information) to 1 (fully committed). It is the maturity metric the rest of the product reads.
+
+Eras are earned by it, and never lost:
+
+- Stabilization unlocks when the index crosses the life gate — the point where chemistry has become capable of carrying heritable information.
+- Intelligence needs the index to climb further and, on top of that, at least one lineage to have locked a mind.
+
+No lineage can lock a mind yet: the cognitive tier that would set it is designed but not built. So the Intelligence Era is currently unreachable — deliberately. It is earned, not granted, and nothing in Alpha can grant it today.
+
 # Using Alpha
 
 ## How do I read the universe map?
@@ -105,6 +153,28 @@ The underlying event log is append-only and permanent, but the chronicle page ne
 ## What is "Alpha Age"?
 
 Alpha Age is the world age of the simulation — an in-world time counter, not a wall-clock date. The literal mapping of ticks to calendar time is an open product decision, so cadence labels (daily/weekly digests, era bands) currently use tunable placeholders.
+
+## How do I inspect a lineage's organism?
+
+Open a species, find the Distribution Field, and use Inspect beneath it. The field is the wide view — where the lineage lives and how its population moves. The Organism Lens is the close-up of a single body from that lineage, and it opens from the field because it is the same lineage at a different zoom.
+
+Once a region has latched, the field also shows the hand it carries, and its samples circulate in that hand's direction — the same fact the Lens draws as a coil, at the scale where a lineage is still only a scatter of dots.
+
+## Why is Inspect locked for some species?
+
+Because there is no settled form to look at yet. Inspect unlocks when two things are true: the lineage's origin region has latched to a hand, and the lineage is holding its ground (stable or dominant). A racemic origin means no hand has been committed, and a lineage that is still emerging or already declining has no form steady enough to resolve. The lock always says which of the two is missing.
+
+## Does an organism's body change while I watch it?
+
+Its shape does not, and that is deliberate. A species' traits are fixed the moment it branches off — mutation creates a *new* species rather than reshaping an existing one — so its body is a constant for its lifetime. What you see change is strain: as heterochiral load rises, the body winds tighter, grows restless, and drifts toward a bruised colour. It never re-grows into a different creature, and it never reverses its coil, because a lineage's hand cannot change.
+
+To see bodies actually change, walk the phylogenetic tree. Each child species carries mutated traits, so it is built differently — that is evolution, visible across generations rather than within one.
+
+## Is the organism in the Lens what the species really looks like?
+
+No — Alpha does not simulate bodies, and there is no "true" appearance for it to reveal. The Lens is a readout: every dimension is derived from the species' own state, so the same lineage always renders identically and two lineages never collide, but the mapping from a trait to a body part is a design choice, not biology. Resilience becoming segments and mobility becoming limbs are our conventions.
+
+The one part that is not a convention is the coil: its direction is the lineage's actual handedness, straight from the simulation.
 
 # Roles & interaction
 
