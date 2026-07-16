@@ -142,11 +142,22 @@ export type FormState = {
   coherence: number;
   /** 0..1 — twist opposing the body's own coil; a lineage at odds with its region. */
   counterTwist: number;
+  /**
+   * Multiplier on the coil under load, in (0, 1]. Strictly positive: load
+   * slackens a lineage's coil, but must never invert it. A lineage's hand is
+   * one-way (§6.2) — it is inherited and never re-derived — so a coil that
+   * reversed under strain would render a left-handed lineage as right-handed
+   * and contradict the one thing the Lens exists to show.
+   */
+  coilSlack: number;
   /** 0..1 — restlessness in the surface. */
   jitter: number;
   /** True once the load is lethal (§6.3): the form is coming apart, not merely strained. */
   failing: boolean;
 };
+
+/** The tightest a fully-loaded coil may wind down to — never 0, never negative. */
+const MIN_COIL_SLACK = 0.15;
 
 /**
  * Mirrors `heterochiral_lethal_load` in `ChiralityRules`. Duplicated here only
@@ -160,6 +171,7 @@ export function deriveFormState(species: SpeciesSummary): FormState {
   return {
     coherence: Number((1 - load).toFixed(3)),
     counterTwist: Number(load.toFixed(3)),
+    coilSlack: Number(Math.max(MIN_COIL_SLACK, 1 - load * 1.6).toFixed(3)),
     jitter: Number((load * load).toFixed(3)),
     failing: load >= LETHAL_LOAD
   };

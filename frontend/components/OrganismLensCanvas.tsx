@@ -30,12 +30,13 @@ function spinePoints(body: BodyParams, form: FormState): THREE.Vector3[] {
   // A committed lineage coils; an uncommitted one (chirality 0) stays straight —
   // no hand, no helix.
   const turns = body.coilDirection === 0 ? 0 : body.coilTurns;
-  // Load twists the body against its own coil: the form fights itself (§6.3).
-  const counter = 1 - form.counterTwist * 1.6;
+  // Load winds the coil down so the form reads as strained (§6.3). The floor
+  // lives in `coilSlack`, not here: how far a hand may slacken is a fact about
+  // the lineage, not about this renderer.
 
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
-    const angle = t * turns * Math.PI * 2 * body.coilDirection * counter;
+    const angle = t * turns * Math.PI * 2 * body.coilDirection * form.coilSlack;
     // Taper narrows the coil toward the tail.
     const spread = (1 - t * body.taper) * body.radius;
     points.push(

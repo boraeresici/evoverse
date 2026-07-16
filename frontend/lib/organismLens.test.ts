@@ -239,4 +239,25 @@ describe("deriveFormState", () => {
     expect(deriveFormState(makeSpecies({ heterochiralLoad: 1.4 })).coherence).toBe(0);
     expect(deriveFormState(makeSpecies({ heterochiralLoad: -0.2 })).coherence).toBe(1);
   });
+
+  it("never lets load invert the coil, at any load", () => {
+    // The hand is one-way (§6.2). A non-positive slack would mirror the helix
+    // and render a left-handed lineage as right-handed — the Lens contradicting
+    // the single fact it exists to show. This held for load <= 0.625 by luck;
+    // it must hold everywhere.
+    for (let load = 0; load <= 1.5; load += 0.01) {
+      const state = deriveFormState(makeSpecies({ heterochiralLoad: load }));
+      expect(state.coilSlack).toBeGreaterThan(0);
+    }
+  });
+
+  it("slackens the coil as load rises, without reversing it", () => {
+    const clean = deriveFormState(makeSpecies({ heterochiralLoad: 0 }));
+    const strained = deriveFormState(makeSpecies({ heterochiralLoad: 0.4 }));
+    const lethal = deriveFormState(makeSpecies({ heterochiralLoad: 1 }));
+    expect(clean.coilSlack).toBe(1);
+    expect(strained.coilSlack).toBeLessThan(clean.coilSlack);
+    expect(lethal.coilSlack).toBeLessThan(strained.coilSlack);
+    expect(lethal.coilSlack).toBeGreaterThan(0);
+  });
 });
