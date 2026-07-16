@@ -1,4 +1,4 @@
-.PHONY: backend frontend worker test smoke benchmark migrate migrate-status
+.PHONY: backend frontend worker test smoke benchmark sweep migrate migrate-status
 
 backend:
 	uvicorn app.main:app --reload --app-dir backend
@@ -17,6 +17,9 @@ smoke:
 
 benchmark:
 	PYTHONPATH=backend python -m app.simulation.benchmark
+
+sweep:
+	PYTHONPATH=backend python -m app.simulation.sweep
 
 migrate:
 	PYTHONPATH=backend python -m app.persistence.migrations upgrade

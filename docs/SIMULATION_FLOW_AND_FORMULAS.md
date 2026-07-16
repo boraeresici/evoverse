@@ -158,26 +158,47 @@ that point regions hover short of the latch forever. That matters far more than
 $\mu\le0$ does, because everything in T1 downstream of the lock — lineages
 adopting a hand (§6.2), heterochiral selection (§5), the Organism Lens — is gated
 on `chirality_locked`, while the **Era gate reads the universe mean, not the
-locks**. So there is a narrow window where a universe *earns Stabilization while
-nothing ever latches and no lineage ever adopts a hand*. Measured at
-$\lambda=0.02$: mean $0.85$ (gate passes), **0/108 regions locked**. By
-$\lambda=0.03$ the mean has fallen under the gate too and the universe is merely
-starved rather than hollow.
+locks**. So there is a window where a universe *earns Stabilization while nothing
+ever latches and no lineage ever adopts a hand*.
+
+Measured over the 8-seed ensemble (4211–4218) at 600 ticks — the cliff is sharp:
+
+| $\lambda$ | locked / 108 | $H$ | life | mean lock tick |
+| --- | --- | --- | --- | --- |
+| 0.008 *(default)* | **108** | 1.00 | 8/8 | 64 |
+| 0.016 | **108** | 1.00 | 8/8 | 81 |
+| 0.018 | **108** | 1.00 | 8/8 | 113 |
+| 0.020 – 0.025 | **0** | 0.84 – 0.81 | **8/8** | never ← hollow: alive, handless |
+| 0.030 | 0 | 0.77 | 0/8 (starved) | never |
+| 0.060 $(=k)$ | 0 | 0.44 | 0/8 | never |
+
+The lock tick in that last column diverges as $\lambda$ approaches the cliff —
+64, 81, 113, never — which is **critical slowing down**, the signature of a
+continuous transition rather than an abrupt one. The system does not fall off a
+ledge at 0.019; it takes longer and longer to commit until, past the cliff, it
+never does.
 
 The naive cliff from $\mathit{ee}^\ast$ alone is $\lambda = k(1-\text{lock}^2) =
-0.0114$, but the latch is an **absorbing barrier** — irreversible — so noise and
-the field carry regions over it even when the deterministic fixed point sits
-below. Measured, latching survives to about $\lambda=0.018$. The default $0.008$
-($\mathit{ee}^\ast=0.93$) sits well clear: all 108 regions latch, and life is
-earned at tick $50$ rather than $44$ — racemization is a headwind, not a wall.
-`_validate_chirality_latch` warns on both failure modes from the rules screen.
+0.0114$, but that under-predicts by a wide margin: the latch is an **absorbing
+barrier** — irreversible — so noise and the field carry regions over it even when
+the deterministic fixed point sits below ($\lambda=0.016$ settles at
+$\mathit{ee}^\ast=0.86$ and still latches 108/108). Latching survives to $0.018$
+and is gone by $0.020$. The default $0.008$ ($\mathit{ee}^\ast=0.93$) sits well
+clear, and life is earned at tick $50$ rather than $44$ — racemization is a
+headwind, not a wall. `_validate_chirality_latch` warns on both failure modes
+from the rules screen.
+
+Reproduce with `make sweep` (`--param racemization_rate`).
 
 Without $\beta B$ the cubic term amplifies whichever way each region's *local*
 noise happened to push, and the map freezes into opposing domains: every region
 locked, none agreeing. The field is what makes the outcome *homochiral* rather
-than merely locked. Measured over 10 seeds at 400 ticks: $\beta=0$ gives 0/10
-single-handed universes (≈5 domains each), $\beta=0.002$ gives 6/10, and
-$\beta=0.005$ gives 10/10.
+than merely locked. Measured over the 8-seed ensemble (4211–4218) at 400 ticks,
+counting universes that reach a single domain: $\beta=0$ gives **0/8** (≈5
+domains each), $\beta=0.001$ gives 2/8, and $\beta\ge0.002$ gives **8/8**. The
+default $0.005$ sits a stride past the transition rather than on it.
+
+Reproduce with `make sweep` (`--param field_strength`).
 
 **Lock.** When $|\mathit{ee}|\ge\text{eeLockThreshold}$ the region latches
 irreversibly to $\operatorname{sign}(\mathit{ee})$ (`chirality_locked = True`).

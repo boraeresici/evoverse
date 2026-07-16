@@ -266,31 +266,36 @@ drift settles at `ee* = sqrt(1 - racemization_rate/amplify_k)`, which drops belo
 `ee_lock_threshold` well before `mu` reaches zero. Since everything downstream —
 hand inheritance (§6.2), heterochiral selection (§6.3), the Organism Lens (§8) —
 is gated on `chirality_locked`, while the Era gate reads the universe *mean*, there
-is a narrow window where a universe **earns Stabilization while nothing ever latches
-and no lineage ever adopts a hand**. Measured at `racemization_rate = 0.02`: mean
-0.85 (gate passes), 0/108 locked. By 0.03 the mean is under the gate too and the
-universe is merely starved rather than hollow. `_validate_chirality_latch` warns on
-both from the rules screen, and `test_racemization_can_grant_life_while_nothing_ever_latches`
-pins the hollow case.
+is a window where a universe **earns Stabilization while nothing ever latches and
+no lineage ever adopts a hand**. Over the 8-seed ensemble (4211–4218) at 600 ticks
+the cliff is sharp: 0.008–0.018 latch 108/108 with life 8/8; **0.020–0.025 latch
+0/108 and still earn life 8/8** — alive and handless; by 0.030 the mean (0.77) is
+under the gate too and the universe is merely starved rather than hollow.
+`_validate_chirality_latch` warns on both from the rules screen, and
+`test_racemization_can_grant_life_while_nothing_ever_latches` pins the hollow case.
+Reproduce with `make sweep --param racemization_rate`.
 
-The naive cliff is `amplify_k * (1 - lock**2) = 0.0114`, but that under-predicts:
-the latch is an **absorbing barrier**, so noise and the field carry regions over it
-even when the deterministic fixed point sits below. Measured, latching survives to
-about 0.018. The default 0.008 (`ee* = 0.93`) sits clear of it — all 108 regions
-latch, and life is earned at tick 50 rather than 44. Racemization is a headwind,
-not a wall: same destination, slower.
+The naive cliff is `amplify_k * (1 - lock**2) = 0.0114`, but that under-predicts by
+a wide margin: the latch is an **absorbing barrier**, so noise and the field carry
+regions over it even when the deterministic fixed point sits below — 0.016 settles
+at `ee* = 0.86` and still latches every region. Latching survives to 0.018 and is
+gone by 0.020. The default 0.008 (`ee* = 0.93`) sits clear, and life is earned at
+tick 50 rather than 44. Racemization is a headwind, not a wall: same destination,
+slower.
 
 **Why the field is load-bearing, not decoration.** Öztürk's contribution is not
 that symmetry breaks — Frank showed autocatalysis alone does that in 1953 — it is
 that a *global field* breaks it the **same way everywhere**, which is why life is
 L-handed across the whole planet rather than in patches. Without `field`, each
 region amplifies whichever way its own local noise pushed, and the map freezes
-into opposing domains: locked, locally pure, globally racemic. Measured over 10
-seeds at 400 ticks: `field_strength = 0` gives **0/10** single-handed universes
-(≈5 domains each); `0.002` gives 6/10; `0.005` gives **10/10**. Noise is damped by
-`(1 - |ee|)` because it is a property of the region's own racemic jitter; the
-field is not damped, because it is external and does not care how committed the
-region already is.
+into opposing domains: locked, locally pure, globally racemic. Measured over the
+8-seed ensemble (4211–4218) at 400 ticks, counting universes that reach a single
+domain: `field_strength = 0` gives **0/8** (≈5 domains each); `0.001` gives 2/8;
+`0.002` and up give **8/8**. The default `0.005` sits a stride past the transition
+rather than on it. Reproduce with `make sweep --param field_strength`. Noise is
+damped by `(1 - |ee|)` because it is a property of the region's own racemic
+jitter; the field is not damped, because it is external and does not care how
+committed the region already is.
 
 The hand stays **contingent** — different seeds land on different hands — while
 being **global**. That is the combination the mechanism exists to produce.
