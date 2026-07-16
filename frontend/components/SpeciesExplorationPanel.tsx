@@ -408,6 +408,10 @@ function speciesReplayProjection(data: SpeciesDetail): {
       resourceDensity: clamp01(adaptation * 0.35 + mobility * 0.25 + expansion * 0.4),
       stability: clamp01(resilience * 0.45 + cooperation * 0.2 + (1 - extinctionRisk) * 0.35),
       lifeIndex: clamp01(Math.log10(data.species.population + 1) / 5.4),
+      // Synthetic distribution field, not a real region: it stands for the lineage,
+      // so it carries the lineage's own hand rather than any region's.
+      chiralityEe: data.species.chirality,
+      chiralityLocked: data.species.chirality !== 0,
       collapsed: data.species.status === "extinct",
       dominantSpeciesId: data.species.id,
       dominantSpeciesName: data.species.name,
