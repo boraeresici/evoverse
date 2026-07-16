@@ -199,7 +199,10 @@ def _print_diagnostics(report: dict) -> None:
     if "correlation" in report:
         print("Correlation length (ξ, first zero-crossing of C(r)):")
         for field, result in report["correlation"].items():
-            flag = " [saturated/ordered]" if result["saturated"] else ""
+            if result["degenerate"]:
+                print(f"  {field}: no variance — nothing to correlate")
+                continue
+            flag = " [floored — read as ≤]" if result["xiFloored"] else ""
             print(f"  {field}: ξ={result['xi']} (c0={result['c0']}){flag}")
     if "scaleFree" in report:
         scan = report["scaleFree"]
@@ -208,7 +211,7 @@ def _print_diagnostics(report: dict) -> None:
         for point in scan["points"]:
             print(
                 f"  L={point['L']:>3}  ξ={point['xi']:>6}  ξ/L={point['xiOverL']}"
-                f"{'  [saturated]' if point['saturated'] else ''}"
+                f"{'  [floored]' if point['xiFloored'] else ''}"
             )
     if "patterns" in report:
         patterns = report["patterns"]
