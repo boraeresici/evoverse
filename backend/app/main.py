@@ -10,11 +10,13 @@ from uuid import uuid4
 from app.api.errors import ERROR_CODES, http_exception_handler, validation_exception_handler
 from app.config import get_settings
 from app.persistence import AlphaStateConflictError, create_alpha_repository
+from app.persistence.repository import SNAPSHOT_FRAME_BUDGET
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.services import AlphaStore
 from app.services.alpha_store import (
@@ -150,7 +152,7 @@ async def observability_middleware(request: Request, call_next):
         return response
     except Exception as exc:
         route = _route_path(request)
-        _record_api_observation(
+        await _record_api_observation(
             request=request,
             route=route,
             status_code=500,
@@ -169,7 +171,7 @@ async def observability_middleware(request: Request, call_next):
         raise
     finally:
         if not recorded:
-            _record_api_observation(
+            await _record_api_observation(
                 request=request,
                 route=route or _route_path(request),
                 status_code=status_code,
@@ -269,7 +271,33 @@ def _ensure_admin_write(request: Request, explicit_actor_id: str | None = None) 
     return actor_id
 
 
-def _record_api_observation(
+async def _record_api_observation(
+    *,
+    request: Request,
+    route: str | None,
+    status_code: int,
+    duration_ms: float,
+    request_id: str,
+    error_code: str | None = None,
+    message: str | None = None,
+) -> None:
+    # The store writes these rows synchronously. Calling it directly from the async
+    # middleware blocked the event loop on a database round-trip for the duration of
+    # every single request, so concurrent requests queued behind each other's
+    # logging instead of being served. Hand it to a worker thread instead.
+    await run_in_threadpool(
+        _record_api_observation_sync,
+        request=request,
+        route=route,
+        status_code=status_code,
+        duration_ms=duration_ms,
+        request_id=request_id,
+        error_code=error_code,
+        message=message,
+    )
+
+
+def _record_api_observation_sync(
     *,
     request: Request,
     route: str | None,
@@ -353,7 +381,13 @@ def get_alpha_dynamic_report(
 
 @app.get("/universes/alpha/snapshots")
 def get_alpha_snapshots(
-    limit: int = Query(default=50, ge=1, le=100),
+    # Capped at the frame budget, not an arbitrary 100: compaction bounds all of
+    # world history to that many frames, so this lets a client ask for the whole
+    # timeline in one call. The old cap silently limited the scrubber to the
+    # newest 100 ticks -- with a snapshot written every tick that was the last few
+    # minutes of a universe millions of ticks old, and no amount of stored history
+    # was reachable through it.
+    limit: int = Query(default=50, ge=1, le=SNAPSHOT_FRAME_BUDGET),
     offset: int = Query(default=0, ge=0),
     from_age: int | None = Query(default=None, ge=0, alias="fromAge"),
     to_age: int | None = Query(default=None, ge=0, alias="toAge"),

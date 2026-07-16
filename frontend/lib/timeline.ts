@@ -38,6 +38,14 @@ export type TimeZoom = {
   span: number;
 };
 
+/**
+ * Upper bound on how many snapshot frames the backend keeps for all of world
+ * history (EVOVERSE_SNAPSHOT_FRAME_BUDGET). Compaction holds the stored frame
+ * count under this forever, so requesting this many is asking for the complete
+ * timeline, not a page of it.
+ */
+export const SNAPSHOT_FRAME_BUDGET = 2000;
+
 export const TIME_ZOOMS: TimeZoom[] = [
   { key: "recent", label: "Recent", span: 0.25 },
   { key: "mid", label: "Wider", span: 0.6 },

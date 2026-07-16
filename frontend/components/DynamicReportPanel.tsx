@@ -89,7 +89,7 @@ export function DynamicReportPanel({
           <h1>Alpha Progress Lens</h1>
           <p>
             Snapshot comparison across current and historical Alpha state, rendered from the same
-            backend report model for universe, region, and species scopes.
+            backend report model for universe, region, species, and population scopes.
           </p>
         </div>
         <div className="report-coverage" aria-label="Report coverage">
@@ -179,6 +179,7 @@ function ReportControls({
           <option value="universe">Universe</option>
           <option value="region">Region</option>
           <option value="species">Species</option>
+          <option value="population">Population</option>
         </select>
       </label>
       <label>

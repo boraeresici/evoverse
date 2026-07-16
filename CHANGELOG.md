@@ -8,7 +8,39 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ## [Unreleased]
 
+### Fixed
+
+- **Snapshot frame budget — the unbounded per-tick write.** `save_alpha` wrote a
+  full snapshot set on every tick (~844 rows at Alpha's size, ~36M rows/day at the
+  default 2s tick) with no retention. A production database reached ~64.7M
+  snapshot rows over ~93k ticks and ~20 GB — >99% of its contents — while the
+  event log it was tuned around sat at 13.8k rows. Frames are now kept on a
+  derived stride (`tick % stride == 0`, stride the smallest power of two fitting
+  history into `EVOVERSE_SNAPSHOT_FRAME_BUDGET`), with a batched, idempotent
+  `compact_snapshots` sweep in the worker loop that both maintains a live universe
+  and drains a pre-stride backlog. Size is now flat forever (~840k rows at the
+  shipped budget) and history keeps its full span, losing only resolution.
+  Migration `012_snapshot_frame_budget.sql` indexes the frame scan. See
+  [`docs/PERFORMANCE_LOOP.md`](docs/PERFORMANCE_LOOP.md).
+- **Deep history was unreachable.** `/universes/alpha/snapshots` capped a page at
+  100 and `/universe` requested exactly that, so the time scrubber only ever saw
+  the newest 100 ticks — a few minutes of a universe millions of ticks old,
+  regardless of how much history was stored. The cap is now the frame budget, and
+  `/universe` asks for the whole timeline.
+- **Observability writes no longer stall the simulation.** `record_api_request`,
+  `record_api_error` and `track_product_event` took the same lock the engine holds
+  while advancing a tick, and the admin dashboard held it across whole-table log
+  aggregates. Log writes now use a dedicated lock (the DB serialises the
+  repository path on its own), the summary holds the state lock only for the
+  universe block, and the middleware hands its synchronous insert to a worker
+  thread instead of blocking the event loop.
+
 ### Added
+
+- **`population` report scope in the UI.** `/reports?scope=population` — a single
+  species' colony within a single region, the one view of a colony's own
+  trajectory — was implemented end to end (backend metrics, frontend labels,
+  formats and colors) but never wired into the scope dropdown. Added the option.
 
 - **Keyset (cursor) pagination for event feeds.** The chronicle, region, and
   species event feeds now page straight from the DB via a `(tick, id)` keyset

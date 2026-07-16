@@ -35,6 +35,7 @@ class Settings:
     worker_interval_seconds: float
     worker_ticks_per_step: int
     worker_max_steps: int | None
+    worker_compact_every_steps: int
     allow_destructive_ops: bool
     worker_stale_seconds: float
     allow_local_admin: bool
@@ -68,6 +69,12 @@ def get_settings() -> Settings:
         worker_interval_seconds=float(os.getenv("EVOVERSE_WORKER_INTERVAL_SECONDS", "2")),
         worker_ticks_per_step=int(os.getenv("EVOVERSE_WORKER_TICKS_PER_STEP", "1")),
         worker_max_steps=_as_optional_int(os.getenv("EVOVERSE_WORKER_MAX_STEPS")),
+        # How often the worker sweeps off-stride snapshot frames, in steps. The
+        # write path already refuses to add off-stride frames, so this only has to
+        # catch up when the stride widens -- rare, since it doubles. It also drains
+        # a pre-stride backlog, which is why it runs often enough to make progress
+        # without a manual backfill. 0 disables it.
+        worker_compact_every_steps=int(os.getenv("EVOVERSE_WORKER_COMPACT_EVERY_STEPS", "30")),
         allow_destructive_ops=_as_bool(
             os.getenv("EVOVERSE_ALLOW_DESTRUCTIVE_OPS", "true" if env == "local" else "false")
         ),

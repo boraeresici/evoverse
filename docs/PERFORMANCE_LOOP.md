@@ -100,6 +100,70 @@ Prefer `cursor` for deep scroll (constant cost); `offset` remains for shallow
 jumps. `MAX_LOADED_EVENTS` now only governs the worker/API reload cost, not feed
 depth.
 
+## Snapshots — the actual disk driver
+
+Everything above is about `events`, and it worked: the event log settles around
+~14k rows. That made this document a blind spot. While it optimised a table that
+was never large, `save_alpha` was writing an unbounded per-tick snapshot on every
+call, and nothing here mentioned it.
+
+`_insert_snapshot` wrote one `universe_snapshots` row plus one row per region, per
+species and per population — **~844 rows per tick** at Alpha's size — with no
+retention at all. At the default 2s tick that is ~36M rows/day. A production
+database reached **~64.7M snapshot rows across ~93k ticks (about two days) and
+~20 GB**, against 13.8k events and 402 `api_request_logs` rows. Snapshots were
+>99% of the database.
+
+It also drove the freeze, which looked like a locking bug and was not one: the
+per-tick write happens under the simulation lock, and `EVOVERSE_API_REFRESH_ON_READ`
+(default on) makes every API read take that same lock, so each request waited on a
+844-row insert into 64M-row indexed tables.
+
+The reader is what makes this absurd: those rows exist only for
+`/universes/alpha/snapshots/{tick}/details`, which serves the `/universe` time
+scrubber. The scrubber shows one frame at a time and a screen can address ~1500 of
+them. The API's page cap was 100. So the write path produced tick-level resolution
+that no reader could ever request.
+
+### Frame budget
+
+A **frame** is one snapshot set at a single tick. Frames are kept on a stride:
+
+    stride = smallest 2^k such that (newest_tick / stride) <= SNAPSHOT_FRAME_BUDGET
+    a frame exists  ⟺  tick % stride == 0
+
+Stride is derived from the newest tick, never stored, so the write path and the
+compaction job cannot disagree about which ticks are frames. It only ever doubles,
+which means every tick kept at stride 2N was already a frame at stride N —
+widening drops frames without shifting the surviving grid.
+
+| # | Fix | Where | Effect |
+|---|-----|-------|--------|
+| 1 | **Stride the write** | `_insert_snapshot` | Skips ticks off the current stride. Reads the stride from the newest *stored* tick, so a save cannot widen the stride and skip its own frame. |
+| 2 | **Compaction** | `compact_snapshots` → worker loop | Deletes off-stride frames, batched (`SNAPSHOT_COMPACT_BATCH` frames/call). Idempotent, so the same call maintains a live universe and drains a pre-stride backlog. Doomed ticks come from the small `universe_snapshots`; detail rows go by `(universe_id, tick, ...)` primary key. |
+| 3 | **Uncap the reader** | [`main.py`](../backend/app/main.py) `get_alpha_snapshots` | Page cap goes from a flat 100 to the frame budget, so a client can ask for the entire timeline. `/universe` now does. |
+| 4 | **Compaction index** | [`migrations/012_snapshot_frame_budget.sql`](../backend/migrations/012_snapshot_frame_budget.sql) | `universe_snapshots(universe_id, tick)` backs the frame scan; `tick % stride <> 0` cannot use an index, so it is kept on the smallest table. |
+
+History keeps its full span and gives up only resolution — the axis the scrubber
+cannot render anyway. Recent fidelity is unaffected: the live view reads current
+state, not snapshots.
+
+If compaction never runs, the write path alone still bounds frames at
+`budget * log2(ticks/budget)` rather than growing linearly. Compaction closes the
+gap to the budget.
+
+End-to-end check: 1600 ticks at `budget=50` held the frame count at 31–50 (the
+designed `budget/2 .. budget` oscillation) while the stored frames still spanned
+96–98% of all ticks, and the oldest surviving frame resolved to full detail. Disk
+projection at the shipped `budget=2000`: ~840k rows (~250 MB), flat forever,
+against ~13.3 billion rows/year unbounded.
+
+| Env | Default | Meaning |
+|-----|---------|---------|
+| `EVOVERSE_SNAPSHOT_FRAME_BUDGET` | `2000` | Frames kept for all of world history. Also the `/snapshots` page cap. |
+| `EVOVERSE_SNAPSHOT_COMPACT_BATCH` | `200` | Frames dropped per compaction call. |
+| `EVOVERSE_WORKER_COMPACT_EVERY_STEPS` | `30` | Worker steps between compaction sweeps. `0` disables. |
+
 ### Backlog — table partitioning
 
 `events_page` keeps a single growing table fast via indexes. When the table nears

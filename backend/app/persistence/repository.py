@@ -23,6 +23,26 @@ MAX_LOADED_EVENTS = int(os.getenv("EVOVERSE_MAX_LOADED_EVENTS", "2000"))
 # the in-memory slice.
 MAX_STORED_EVENTS = int(os.getenv("EVOVERSE_MAX_STORED_EVENTS", "0"))
 
+# How many historical snapshot frames to keep, across all of world history. See
+# docs/PERFORMANCE_LOOP.md.
+#
+# A frame is one set of universe/region/species snapshots at a single tick.
+# Writing one per tick grew without bound (~36M rows/day) to serve a scrubber that
+# can address ~100 frames, so frames are instead kept on a stride: only ticks
+# where `tick % stride == 0` are stored, and stride is the smallest power of two
+# that fits history into this budget. Stride doubles as the universe ages, which
+# holds the frame count between BUDGET/2 and BUDGET forever -- history keeps its
+# full span and only loses resolution, which is the tradeoff the scrubber can
+# actually perceive. Recent fidelity does not depend on this: the live view reads
+# current state directly, not snapshots.
+SNAPSHOT_FRAME_BUDGET = int(os.getenv("EVOVERSE_SNAPSHOT_FRAME_BUDGET", "2000"))
+
+# Frames removed per compaction call. Compaction deletes whole ticks, so this is
+# in frames, not rows (one frame is ~420 rows at Alpha's size). Bounded so a
+# stride change -- or a first run against an uncompacted backlog -- drains over
+# repeated calls instead of one transaction that would stall the database.
+SNAPSHOT_COMPACT_BATCH = int(os.getenv("EVOVERSE_SNAPSHOT_COMPACT_BATCH", "200"))
+
 from app.domain import (
     AlphaState,
     BiomeType,
@@ -49,8 +69,8 @@ from app.persistence.schema import (
     metadata,
     notification_reads,
     observer_follows,
-    population_snapshots,
     populations,
+    population_snapshots,
     product_analytics_events,
     region_snapshots,
     regions,
@@ -521,6 +541,51 @@ class AlphaStateRepository:
             "items": [dict(row) for row in rows],
             "total": total,
         }
+
+    def compact_snapshots(self, universe_id: str = "alpha", *, budget: int | None = None) -> dict:
+        """Drop up to SNAPSHOT_COMPACT_BATCH frames the current stride no longer keeps.
+
+        Idempotent: it recomputes the stride from the newest tick and removes
+        whatever no longer sits on the grid, so the same call both maintains a
+        live universe (a handful of frames each time the stride doubles) and
+        drains a backlog written before striding existed (many calls, batch by
+        batch). Returns the stride in force and how many frames went.
+        """
+        frame_budget = budget if budget is not None else SNAPSHOT_FRAME_BUDGET
+        with self.engine.begin() as connection:
+            stride = snapshot_stride(
+                _snapshot_frame_tick(connection, universe_id),
+                budget=frame_budget,
+            )
+            if stride == 1:
+                return {"stride": 1, "framesDropped": 0}
+            doomed = connection.execute(
+                select(universe_snapshots.c.tick)
+                .where(
+                    universe_snapshots.c.universe_id == universe_id,
+                    universe_snapshots.c.tick % stride != 0,
+                )
+                .order_by(universe_snapshots.c.tick)
+                .limit(SNAPSHOT_COMPACT_BATCH)
+            ).scalars().all()
+            if not doomed:
+                return {"stride": stride, "framesDropped": 0}
+            # Detail rows are reached by their (universe_id, tick, ...) primary
+            # key, so only the frame scan above touches a non-indexed predicate --
+            # and it runs against universe_snapshots, which the budget keeps small.
+            for table in (
+                population_snapshots,
+                region_snapshots,
+                species_snapshots,
+                universe_snapshots,
+            ):
+                connection.execute(
+                    delete(table).where(
+                        table.c.universe_id == universe_id,
+                        table.c.tick.in_(doomed),
+                    )
+                )
+        return {"stride": stride, "framesDropped": len(doomed)}
 
     def snapshot_details(self, tick: int, universe_id: str = "alpha") -> dict | None:
         with self.engine.begin() as connection:
@@ -1505,6 +1570,37 @@ def _prune_events(connection, universe_id: str, *, keep: int) -> None:
     )
 
 
+def snapshot_stride(max_tick: int, *, budget: int | None = None) -> int:
+    """Smallest power of two that fits ``max_tick`` worth of frames into ``budget``.
+
+    Derived, never stored: any process can recompute the current stride from the
+    newest tick alone, so the write path and the compaction job cannot disagree
+    about which ticks are frames. Doubling (rather than growing by an arbitrary
+    step) is what makes compaction non-destructive to the surviving grid -- every
+    tick kept at stride 2N is also a multiple of stride N, so widening the stride
+    only ever drops frames, never shifts the ones that remain.
+    """
+    # Resolved here rather than as a default argument so the module global stays
+    # the single source of truth: a default would bind once at import and silently
+    # ignore any later change to the budget.
+    frame_budget = SNAPSHOT_FRAME_BUDGET if budget is None else budget
+    if frame_budget <= 0:
+        raise ValueError("snapshot frame budget must be positive")
+    stride = 1
+    while max_tick // stride > frame_budget:
+        stride *= 2
+    return stride
+
+
+def _snapshot_frame_tick(connection, universe_id: str) -> int:
+    newest = connection.execute(
+        select(func.max(universe_snapshots.c.tick)).where(
+            universe_snapshots.c.universe_id == universe_id
+        )
+    ).scalar()
+    return int(newest or 0)
+
+
 def _upsert(connection, table, key_columns: list[str], values: dict) -> None:
     assignments = {
         key: value for key, value in values.items() if key not in set(key_columns)
@@ -1561,6 +1657,12 @@ def _delete_alpha_state(
 
 
 def _insert_snapshot(connection, state: AlphaState) -> None:
+    # Frames are written on a stride, not every tick. The stride follows the
+    # newest tick already on disk rather than the tick being written, so a save
+    # cannot widen the stride and skip its own frame in the same call.
+    stride = snapshot_stride(_snapshot_frame_tick(connection, state.universe.id))
+    if state.universe.tick % stride != 0:
+        return
     population_count = sum(
         population.population_count for population in state.populations.values()
     )
