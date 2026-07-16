@@ -7,6 +7,7 @@ from sqlalchemy import update
 
 from app.domain import CatalystActionType
 from app.persistence import AlphaStateConflictError, AlphaStateRepository
+from app.persistence import repository as repository_module
 from app.persistence.schema import events as events_table
 from app.services import AlphaStore
 from app.services.alpha_store import AdminPermissionError, CatalystCooldownError, CatalystLimitError
@@ -489,3 +490,108 @@ def test_catalyst_daily_limit_uses_rules_config(tmp_path) -> None:
 
     with pytest.raises(CatalystLimitError):
         store.catalyst_action("region-002", "energy_pulse", user_id=user_id)
+
+
+def test_snapshot_stride_holds_frame_count_under_budget() -> None:
+    # Stride only ever doubles, so every tick kept at a wider stride was also a
+    # frame at the narrower one -- compaction drops frames, never shifts the grid.
+    assert repository_module.snapshot_stride(500, budget=2000) == 1
+    assert repository_module.snapshot_stride(2000, budget=2000) == 1
+    assert repository_module.snapshot_stride(2001, budget=2000) == 2
+    assert repository_module.snapshot_stride(92_967, budget=2000) == 64
+
+    for max_tick in (1, 999, 4001, 92_967, 15_800_000):
+        stride = repository_module.snapshot_stride(max_tick, budget=2000)
+        assert max_tick // stride <= 2000
+        assert stride == 1 or max_tick // (stride // 2) > 2000
+
+
+def test_insert_snapshot_only_writes_on_the_stride(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(repository_module, "SNAPSHOT_FRAME_BUDGET", 4)
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    for _ in range(24):
+        engine.advance(state, ticks=1)
+        repository.save_alpha(state)
+
+    ticks = sorted(int(row["tick"]) for row in repository.snapshots(limit=100)["items"])
+    stride = repository_module.snapshot_stride(max(ticks), budget=4)
+
+    # The gate skips off-stride ticks, so frames trail ticks well behind 1:1.
+    assert stride > 1
+    assert len(ticks) < 24
+    # It reads the stride off the newest tick already stored, so frames written
+    # before the stride last widened survive until compaction sweeps them. The
+    # write path alone therefore bounds frames at budget*log2(ticks/budget), not
+    # at budget -- compaction is what closes the gap. Only the newest frame is
+    # guaranteed to sit on the stride now in force.
+    assert ticks[-1] % stride == 0
+
+
+def test_compact_snapshots_drains_a_backlog_and_is_idempotent(tmp_path, monkeypatch) -> None:
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    # Write at stride 1 (a wide budget), the shape prod is in today, then compact
+    # down to a narrow budget the way the backfill will.
+    monkeypatch.setattr(repository_module, "SNAPSHOT_FRAME_BUDGET", 10_000)
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    for _ in range(24):
+        engine.advance(state, ticks=1)
+        repository.save_alpha(state)
+    before = len(repository.snapshots(limit=100)["items"])
+
+    monkeypatch.setattr(repository_module, "SNAPSHOT_COMPACT_BATCH", 2)
+    dropped = 0
+    for _ in range(50):
+        result = repository.compact_snapshots(budget=4)
+        dropped += result["framesDropped"]
+        if result["framesDropped"] == 0:
+            break
+
+    ticks = sorted(int(row["tick"]) for row in repository.snapshots(limit=100)["items"])
+    stride = repository_module.snapshot_stride(max(ticks), budget=4)
+
+    assert dropped > 0
+    assert before > len(ticks)
+    assert all(tick % stride == 0 for tick in ticks)
+    # Re-running against a compacted universe must be a no-op.
+    assert repository.compact_snapshots(budget=4)["framesDropped"] == 0
+
+
+def test_compact_snapshots_removes_detail_rows_with_the_frame(tmp_path, monkeypatch) -> None:
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    monkeypatch.setattr(repository_module, "SNAPSHOT_FRAME_BUDGET", 10_000)
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    for _ in range(12):
+        engine.advance(state, ticks=1)
+        repository.save_alpha(state)
+
+    dropped_tick = next(
+        tick
+        for tick in (int(row["tick"]) for row in repository.snapshots(limit=100)["items"])
+        if tick % 4 != 0
+    )
+    assert repository.snapshot_details(dropped_tick) is not None
+
+    for _ in range(50):
+        if repository.compact_snapshots(budget=3)["framesDropped"] == 0:
+            break
+
+    # The frame and every detail row hanging off it go together -- no orphans.
+    assert repository.snapshot_details(dropped_tick) is None
+    assert repository.snapshot_detail_counts(dropped_tick) == {
+        "region_snapshots": 0,
+        "species_snapshots": 0,
+        "population_snapshots": 0,
+    }

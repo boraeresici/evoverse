@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from threading import RLock
+from threading import Lock, RLock
 from uuid import uuid4
 
 from app.domain import CatalystActionType, EventType
@@ -81,7 +81,17 @@ class AlphaStore:
         bootstrap_catalysts: tuple[str, ...] | None = None,
         allow_local_admin: bool = True,
     ) -> None:
+        # _lock guards the simulation state: the engine advances under it, so every
+        # tick holds it. Observability writes must never take it. The middleware
+        # records a row per HTTP request, and taking _lock there serialised all
+        # request logging against the tick -- a request could not be logged until
+        # the current tick finished, and the tick could not start until in-flight
+        # logging finished. Under load that read as a hung server.
         self._lock = RLock()
+        # _log_lock guards only the in-memory observability buffers below, which
+        # exist for the no-repository (test/demo) path. The repository path needs
+        # no lock at all: the database serialises concurrent inserts itself.
+        self._log_lock = Lock()
         self._seed = seed
         self._boot_ticks = boot_ticks
         self._repository = repository
@@ -171,16 +181,14 @@ class AlphaStore:
                     limit=limit,
                     offset=offset,
                 )
-                items = page["items"]
-                total = page["total"]
+                items, total = page["items"], page["total"]
             else:
                 ordered = sorted(
                     self._memory_admin_runs,
                     key=lambda row: str(row["created_at"]),
                     reverse=True,
                 )
-                items = ordered[offset : offset + limit]
-                total = len(ordered)
+                items, total = ordered[offset : offset + limit], len(ordered)
             return {
                 "model": "admin_simulation_runs_v1",
                 "runs": [_public_admin_run(row) for row in items],
@@ -199,18 +207,18 @@ class AlphaStore:
         user_id: str | None = None,
         client_host: str | None = None,
     ) -> dict:
-        with self._lock:
-            if self._repository:
-                return self._repository.record_api_request_log(
-                    method=method,
-                    path=path,
-                    route=route,
-                    status_code=status_code,
-                    duration_ms=duration_ms,
-                    request_id=request_id,
-                    user_id=user_id,
-                    client_host=client_host,
-                )
+        if self._repository:
+            return self._repository.record_api_request_log(
+                method=method,
+                path=path,
+                route=route,
+                status_code=status_code,
+                duration_ms=duration_ms,
+                request_id=request_id,
+                user_id=user_id,
+                client_host=client_host,
+            )
+        with self._log_lock:
             row = {
                 "id": f"req-memory-{uuid4().hex}",
                 "method": method,
@@ -238,18 +246,18 @@ class AlphaStore:
         request_id: str | None = None,
         payload: dict | None = None,
     ) -> dict:
-        with self._lock:
-            if self._repository:
-                return self._repository.record_api_error_log(
-                    method=method,
-                    path=path,
-                    route=route,
-                    status_code=status_code,
-                    error_code=error_code,
-                    message=message,
-                    request_id=request_id,
-                    payload=payload,
-                )
+        if self._repository:
+            return self._repository.record_api_error_log(
+                method=method,
+                path=path,
+                route=route,
+                status_code=status_code,
+                error_code=error_code,
+                message=message,
+                request_id=request_id,
+                payload=payload,
+            )
+        with self._log_lock:
             row = {
                 "id": f"err-memory-{uuid4().hex}",
                 "method": method,
@@ -276,22 +284,25 @@ class AlphaStore:
         source: str = "api",
         metadata: dict | None = None,
     ) -> dict:
+        event_name = _analytics_event_name(event_name)
+        source = _analytics_source(source)
+        # Only the universe id read needs the state lock; holding it across the
+        # insert would put analytics writes back on the tick's critical path.
         with self._lock:
-            event_name = _analytics_event_name(event_name)
-            source = _analytics_source(source)
             universe_id = self._state.universe.id
-            if self._repository:
-                row = self._repository.record_product_analytics_event(
-                    universe_id=universe_id,
-                    event_name=event_name,
-                    user_id=user_id,
-                    session_id=session_id,
-                    subject_type=subject_type,
-                    subject_id=subject_id,
-                    source=source,
-                    metadata=metadata,
-                )
-            else:
+        if self._repository:
+            row = self._repository.record_product_analytics_event(
+                universe_id=universe_id,
+                event_name=event_name,
+                user_id=user_id,
+                session_id=session_id,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                source=source,
+                metadata=metadata,
+            )
+        else:
+            with self._log_lock:
                 row = {
                     "id": f"analytics-memory-{uuid4().hex}",
                     "universe_id": universe_id,
@@ -305,124 +316,107 @@ class AlphaStore:
                     "created_at": datetime.now(UTC),
                 }
                 self._memory_analytics_events.append(row)
-            return {
-                "model": "product_analytics_event_v1",
-                "event": _public_analytics_event(row),
-            }
+        return {
+            "model": "product_analytics_event_v1",
+            "event": _public_analytics_event(row),
+        }
 
     def observability_summary(self) -> dict:
+        # The state lock covers the universe summary only. The log aggregates below
+        # scan whole log tables, and running them under _lock froze the simulation
+        # for the length of the scan -- opening the admin dashboard was enough to
+        # stall every tick and request until it finished.
         with self._lock:
             self._refresh()
-            request_summary = (
-                self._repository.api_request_summary()
-                if self._repository
-                else _api_request_summary(self._memory_api_requests)
-            )
-            error_summary = (
-                self._repository.api_error_summary()
-                if self._repository
-                else _api_error_summary(self._memory_api_errors)
-            )
-            worker_summary = (
-                self._repository.worker_run_summary()
-                if self._repository
-                else _worker_run_summary(self._memory_worker_events)
-            )
-            analytics_summary = (
-                self._repository.product_analytics_summary()
-                if self._repository
-                else _product_analytics_summary(self._memory_analytics_events)
-            )
-            return {
-                "model": "observability_summary_v1",
-                "universe": self._admin_state_summary(),
-                "requests": request_summary,
-                "errors": error_summary,
-                "worker": {
-                    **worker_summary,
-                    "latestHeartbeat": _public_heartbeat(
-                        self._repository.latest_worker_heartbeat()
-                        if self._repository
-                        else None
-                    ),
-                },
-                "analytics": analytics_summary,
-            }
+            universe_summary = self._admin_state_summary()
+        if self._repository:
+            request_summary = self._repository.api_request_summary()
+            error_summary = self._repository.api_error_summary()
+            worker_summary = self._repository.worker_run_summary()
+            analytics_summary = self._repository.product_analytics_summary()
+            latest_heartbeat = self._repository.latest_worker_heartbeat()
+        else:
+            with self._log_lock:
+                request_summary = _api_request_summary(self._memory_api_requests)
+                error_summary = _api_error_summary(self._memory_api_errors)
+                worker_summary = _worker_run_summary(self._memory_worker_events)
+                analytics_summary = _product_analytics_summary(self._memory_analytics_events)
+            latest_heartbeat = None
+        return {
+            "model": "observability_summary_v1",
+            "universe": universe_summary,
+            "requests": request_summary,
+            "errors": error_summary,
+            "worker": {
+                **worker_summary,
+                "latestHeartbeat": _public_heartbeat(latest_heartbeat),
+            },
+            "analytics": analytics_summary,
+        }
 
     def observability_requests(self, *, limit: int = 50, offset: int = 0) -> dict:
-        with self._lock:
-            limit = max(1, min(limit, 100))
-            offset = max(0, offset)
-            if self._repository:
-                page = self._repository.api_request_logs_page(limit=limit, offset=offset)
-                items = page["items"]
-                total = page["total"]
-            else:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        if self._repository:
+            page = self._repository.api_request_logs_page(limit=limit, offset=offset)
+            items, total = page["items"], page["total"]
+        else:
+            with self._log_lock:
                 ordered = _ordered_rows(self._memory_api_requests)
-                items = ordered[offset : offset + limit]
-                total = len(ordered)
-            return {
-                "model": "api_request_logs_v1",
-                "requests": [_public_api_request(row) for row in items],
-                "pagination": _pagination(total=total, limit=limit, offset=offset),
-            }
+            items, total = ordered[offset : offset + limit], len(ordered)
+        return {
+            "model": "api_request_logs_v1",
+            "requests": [_public_api_request(row) for row in items],
+            "pagination": _pagination(total=total, limit=limit, offset=offset),
+        }
 
     def observability_errors(self, *, limit: int = 50, offset: int = 0) -> dict:
-        with self._lock:
-            limit = max(1, min(limit, 100))
-            offset = max(0, offset)
-            if self._repository:
-                page = self._repository.api_error_logs_page(limit=limit, offset=offset)
-                items = page["items"]
-                total = page["total"]
-            else:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        if self._repository:
+            page = self._repository.api_error_logs_page(limit=limit, offset=offset)
+            items, total = page["items"], page["total"]
+        else:
+            with self._log_lock:
                 ordered = _ordered_rows(self._memory_api_errors)
-                items = ordered[offset : offset + limit]
-                total = len(ordered)
-            return {
-                "model": "api_error_logs_v1",
-                "errors": [_public_api_error(row) for row in items],
-                "pagination": _pagination(total=total, limit=limit, offset=offset),
-            }
+            items, total = ordered[offset : offset + limit], len(ordered)
+        return {
+            "model": "api_error_logs_v1",
+            "errors": [_public_api_error(row) for row in items],
+            "pagination": _pagination(total=total, limit=limit, offset=offset),
+        }
 
     def observability_worker_events(self, *, limit: int = 50, offset: int = 0) -> dict:
-        with self._lock:
-            limit = max(1, min(limit, 100))
-            offset = max(0, offset)
-            if self._repository:
-                page = self._repository.worker_run_events_page(limit=limit, offset=offset)
-                items = page["items"]
-                total = page["total"]
-            else:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        if self._repository:
+            page = self._repository.worker_run_events_page(limit=limit, offset=offset)
+            items, total = page["items"], page["total"]
+        else:
+            with self._log_lock:
                 ordered = _ordered_rows(self._memory_worker_events)
-                items = ordered[offset : offset + limit]
-                total = len(ordered)
-            return {
-                "model": "worker_run_events_v1",
-                "events": [_public_worker_event(row) for row in items],
-                "pagination": _pagination(total=total, limit=limit, offset=offset),
-            }
+            items, total = ordered[offset : offset + limit], len(ordered)
+        return {
+            "model": "worker_run_events_v1",
+            "events": [_public_worker_event(row) for row in items],
+            "pagination": _pagination(total=total, limit=limit, offset=offset),
+        }
 
     def analytics_events(self, *, limit: int = 50, offset: int = 0) -> dict:
-        with self._lock:
-            limit = max(1, min(limit, 100))
-            offset = max(0, offset)
-            if self._repository:
-                page = self._repository.product_analytics_events_page(
-                    limit=limit,
-                    offset=offset,
-                )
-                items = page["items"]
-                total = page["total"]
-            else:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        if self._repository:
+            page = self._repository.product_analytics_events_page(limit=limit, offset=offset)
+            items, total = page["items"], page["total"]
+        else:
+            with self._log_lock:
                 ordered = _ordered_rows(self._memory_analytics_events)
-                items = ordered[offset : offset + limit]
-                total = len(ordered)
-            return {
-                "model": "product_analytics_events_v1",
-                "events": [_public_analytics_event(row) for row in items],
-                "pagination": _pagination(total=total, limit=limit, offset=offset),
-            }
+            items, total = ordered[offset : offset + limit], len(ordered)
+        return {
+            "model": "product_analytics_events_v1",
+            "events": [_public_analytics_event(row) for row in items],
+            "pagination": _pagination(total=total, limit=limit, offset=offset),
+        }
 
     def run_simulation_batch(
         self,

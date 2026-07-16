@@ -3,6 +3,7 @@ import { PageHelp } from "@/components/PageHelp";
 import { StatusBand } from "@/components/StatusBand";
 import { UniverseTimeExplorer } from "@/components/UniverseTimeExplorer";
 import { getChronicle, getRegions, getSnapshots, getSpeciesList } from "@/lib/api";
+import { SNAPSHOT_FRAME_BUDGET } from "@/lib/timeline";
 
 const UNIVERSE_HELP = [
   {
@@ -28,7 +29,11 @@ export default async function UniversePage() {
     getRegions(),
     getSpeciesList(),
     getChronicle("all"),
-    getSnapshots({ limit: 100 })
+    // Ask for the whole timeline. Backend compaction bounds all of world history
+    // to SNAPSHOT_FRAME_BUDGET frames, so this is the full span rather than a
+    // page of it -- the previous limit of 100 pinned the scrubber to the newest
+    // 100 ticks no matter how old the universe was.
+    getSnapshots({ limit: SNAPSHOT_FRAME_BUDGET })
   ]);
 
   if (!data) {

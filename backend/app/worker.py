@@ -35,6 +35,7 @@ def main() -> None:
     ticks_per_step = args.ticks or settings.worker_ticks_per_step
     interval = args.interval if args.interval is not None else settings.worker_interval_seconds
     max_steps = args.steps if args.steps is not None else settings.worker_max_steps
+    compact_every_steps = settings.worker_compact_every_steps
     worker_id = args.worker_id or f"{socket.gethostname()}-{uuid4().hex[:8]}"
     repository.record_worker_run_event(
         worker_id=worker_id,
@@ -78,6 +79,19 @@ def main() -> None:
                 f"species={health['species']} events={health['events']}",
                 flush=True,
             )
+            # The worker is the only process on a timer, so it owns snapshot
+            # compaction. Each call drops at most one batch of frames, so a
+            # widening stride settles over a few steps and a pre-stride backlog
+            # drains across many -- never in one transaction that would stall the
+            # database.
+            if compact_every_steps > 0 and step % compact_every_steps == 0:
+                compacted = repository.compact_snapshots()
+                if compacted["framesDropped"]:
+                    print(
+                        f"worker_compact step={step} worker={worker_id} "
+                        f"stride={compacted['stride']} frames_dropped={compacted['framesDropped']}",
+                        flush=True,
+                    )
         except Exception as exc:
             repository.record_worker_heartbeat(
                 worker_id=worker_id,
