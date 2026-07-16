@@ -134,7 +134,7 @@ Eras are earned by it, and never lost:
 - Stabilization unlocks when the index crosses the life gate — the point where chemistry has become capable of carrying heritable information.
 - Intelligence needs the index to climb further and, on top of that, at least one lineage to have locked a mind.
 
-No lineage can lock a mind yet: the cognitive tier that would set it is designed but not built. So the Intelligence Era is currently unreachable — deliberately. It is earned, not granted, and nothing in Alpha can grant it today.
+The mind lock belongs to the cognitive tier, which is designed but has not shipped, so no lineage carries one yet. Intelligence therefore still sits ahead of Alpha rather than behind a switch — which is how the gate was meant to work: an era is earned, not granted. The index goes on climbing toward it in the meantime, and that half of the gate is already real.
 
 # Using Alpha
 

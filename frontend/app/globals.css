@@ -5696,6 +5696,7 @@ p {
 .crit-bar-faint { opacity: 0.3; }
 .crit-dot { fill: var(--blue); stroke: var(--surface); stroke-width: 2; }
 .crit-dot-floored { fill: var(--surface); stroke: var(--blue); }
+.crit-whisker { stroke: var(--blue); stroke-width: 1.5; opacity: 0.45; }
 .crit-threshold { stroke: var(--brick); stroke-width: 1; stroke-dasharray: 4 3; }
 .crit-reference { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 5 4; opacity: 0.7; }
 

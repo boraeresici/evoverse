@@ -18,7 +18,17 @@ The starling paper proves that same cancellation as an exact identity, which mak
 
 A long reach could just mean a big map. The deciding question is whether reach grows with the map. Double the world; if the reach doubles too, the system is scale-free and it flocks. If the reach stays put, it has a fixed patch size and that is all.
 
-That test is expensive — it rebuilds the universe from its seed at four different sizes and replays every tick — so it does not run when you open this page. The simulation worker measures it on a timer and this page reports what it last found, with the tick it was measured at. That is how the claim honestly reads anyway: you ran the experiment, you report what it said.
+That is how the starling result was reached, and it was never a claim about one flock. The group in Rome filmed twenty-four of them, from a hundred and twenty birds up to four thousand, measured each flock's reach, and found it landed at about a third of the flock's width every time. The finding is the line through those twenty-four points. No single flock could have carried it.
+
+## One world is not an experiment
+
+Alpha grows from a seed: one number that fixes every roll the world will ever make. Change it and the same rules build a different world — same physics, different history. So a reach measured in one seeded world is a fact about that world, not about the rules that made it.
+
+That matters more than it sounds. Run the size test under one seed, then another, and the trend it reports swings by about ±0.09 with nothing changed but the seed — while the entire gap between "reach does not grow" and "reach grows the way a flock's does" is 0.17 wide. One world lands wherever its seed drops it. This page used to print that coin flip as the answer.
+
+So the test now builds four sizes under eight seeds — thirty-two worlds — and reports the trend along with the spread the seeds actually produced. It may call the question settled only when that spread falls entirely on one side of the line. Otherwise it says the run did not settle it, which is a thing the old single-world test had no way to say and often should have.
+
+Thirty-two worlds cost minutes, so the test does not run when you open this page. The worker measures it on a timer and this page reports what it last found. Each world is replayed to a fixed depth rather than to Alpha's present age, because Alpha settles early — its chirality locks within a few hundred ticks, and the reach at tick twelve thousand is the reach at two thousand for six times the work. The question is whether the *rules* flock, which is not a question about how old Alpha happens to be today. The page gives you both numbers anyway: how deep the test replayed, and how old Alpha was when it ran.
 
 ## Why some numbers are missing
 

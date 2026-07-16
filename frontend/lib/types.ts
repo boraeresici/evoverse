@@ -517,10 +517,27 @@ export type ScaleFreePoint = {
   width: number;
   height: number;
   L: number;
-  xi: number;
-  xiOverL: number;
+  /** Mean ξ over the ensemble; null when every seed came back degenerate. */
+  xi: number | null;
+  /** Seed-to-seed spread of ξ, and how well the mean is pinned. Null at one seed. */
+  xiSd: number | null;
+  xiSe: number | null;
+  xiOverL: number | null;
+  seeds: number;
+  flooredSeeds: number;
+  degenerateSeeds: number;
+  /** Majority verdicts over the ensemble — the seed counts above are the evidence. */
   xiFloored: boolean;
   degenerate: boolean;
+};
+
+/** mean ± sd/se of one statistic over the seed ensemble. sd/se are null at n = 1. */
+export type EnsembleSpread = {
+  mean: number | null;
+  sd: number | null;
+  se: number | null;
+  ci95: [number, number] | null;
+  n: number;
 };
 
 /** Null until the worker has run a scan — a fresh universe has no verdict yet. */
@@ -529,15 +546,26 @@ export type ScaleFreeScan = {
     | "critical"
     | "sub_critical"
     | "intermediate"
+    | "inconclusive"
     | "underpowered"
     | "degenerate"
     | "insufficient";
-  measuredAtTick: number;
+  /** How deep each replayed world was advanced — the experiment's parameter. */
+  scanTicks: number;
+  /** How old Alpha was when the scan ran. Null on rows written before the split. */
+  universeTick: number | null;
   measuredAt: string;
   durationMs: number;
   field: string;
+  /** Ensemble size. One seed cannot carry a verdict; see the scan's docstring. */
+  seeds: number;
   points: ScaleFreePoint[];
+  slope: EnsembleSpread | null;
   dataCollapseError: number | null;
+  /** Across-seed spread at fixed size: the floor dataCollapseError has to beat. */
+  seedNoise: number | null;
+  /** dataCollapseError / seedNoise. ~1 ⇒ the sizes are as close as noise allows. */
+  collapseRatio: number | null;
   skipped: Array<{ width: number; height: number; reason: string }>;
 };
 

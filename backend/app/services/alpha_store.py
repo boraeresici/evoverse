@@ -3106,14 +3106,24 @@ def _public_scale_free(row: dict | None) -> dict | None:
     if row is None:
         return None
     payload = row["payload"] or {}
+    seeds = payload.get("seeds") or []
     return {
         "verdict": row["verdict"],
-        "measuredAtTick": int(row["ticks"]),
+        # The depth each replayed world was advanced to — the experiment's own
+        # parameter, not Alpha's age. ``universeTick`` is Alpha's age when it ran.
+        # Rows written before the two were separated have no universeTick, and the
+        # page renders that absence rather than guessing which one the number was.
+        "scanTicks": int(row["ticks"]),
+        "universeTick": payload.get("universeTick"),
         "measuredAt": str(row["measured_at"]),
         "durationMs": _float(row["duration_ms"]),
         "field": payload.get("field"),
+        "seeds": len(seeds),
         "points": payload.get("points", []),
+        "slope": payload.get("slope"),
         "dataCollapseError": payload.get("dataCollapseError"),
+        "seedNoise": payload.get("seedNoise"),
+        "collapseRatio": payload.get("collapseRatio"),
         "skipped": payload.get("skipped", []),
     }
 

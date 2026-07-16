@@ -838,10 +838,11 @@ def test_diagnostics_contract() -> None:
     assert "xiFloored" in stability and "degenerate" in stability
     assert "saturated" not in stability
 
-    # The scan is never computed in-request (~20s); it is whatever the worker
-    # parked, and null is a real state a fresh universe must be able to report.
+    # The scan is never computed in-request (it replays a seed ensemble and takes
+    # minutes); it is whatever the worker parked, and null is a real state a fresh
+    # universe must be able to report.
     assert "scaleFree" in payload
-    assert payload["scaleFree"] is None or "measuredAtTick" in payload["scaleFree"]
+    assert payload["scaleFree"] is None or "scanTicks" in payload["scaleFree"]
 
 
 def test_diagnostics_gates_trigger_lift_on_support() -> None:

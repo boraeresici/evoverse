@@ -11,6 +11,7 @@ from app.simulation.diagnostics import (
     pattern_triggers,
     pattern_triggers_traced,
     scale_free_scan,
+    _scale_free_verdict,
 )
 
 
@@ -114,22 +115,102 @@ def test_correlation_is_deterministic() -> None:
 # --- scale-free scan --------------------------------------------------------
 
 
+VERDICTS = {
+    # No "super_critical": the sum rule forbids the no-crossing state it keyed on.
+    "critical",
+    "sub_critical",
+    "intermediate",
+    "inconclusive",
+    "underpowered",
+    "degenerate",
+    "insufficient",
+}
+
+
 def test_scale_free_scan_reports_points_and_a_verdict() -> None:
     scan = scale_free_scan(
         4211, 300, sizes=[(12, 9), (16, 12), (20, 15)], field="stability"
     )
     assert [p["L"] for p in scan["points"]] == [12, 16, 20]
-    # No "super_critical": the sum rule forbids the no-crossing state it keyed on.
-    assert scan["verdict"] in {
-        "critical",
-        "sub_critical",
-        "intermediate",
-        "underpowered",
-        "degenerate",
-        "insufficient",
-    }
+    assert scan["verdict"] in VERDICTS
     for point in scan["points"]:
         assert point["xiOverL"] == round(point["xi"] / point["L"], 4)
+
+
+def test_scale_free_scan_is_deterministic_over_the_ensemble() -> None:
+    kwargs = {"sizes": [(12, 9), (16, 12)], "field": "stability", "seeds": 3}
+    assert scale_free_scan(4211, 120, **kwargs) == scale_free_scan(4211, 120, **kwargs)
+
+
+def test_ensemble_replays_the_ladder_under_consecutive_seeds() -> None:
+    scan = scale_free_scan(4211, 120, sizes=[(12, 9), (16, 12)], seeds=4)
+    assert scan["seeds"] == [4211, 4212, 4213, 4214]
+    for point in scan["points"]:
+        assert point["seeds"] == 4
+    # The slope is fitted per member and the ensemble taken over those, so there are
+    # as many slopes behind the mean as there are seeds.
+    assert scan["slope"]["n"] == 4
+    assert scan["slope"]["sd"] is not None and scan["slope"]["se"] is not None
+
+
+def test_one_seed_reports_no_spread_and_cannot_be_called_critical() -> None:
+    """A single run has no error bar, and the gates must not pretend otherwise.
+
+    ξ's slope against L moves by ~0.09 seed to seed, which is half the width of the
+    band between "flat" and "scale-free" — so a lone seed lands wherever it lands.
+    It may still come back flat (that gate only needs the number to be low), but
+    "critical" additionally needs the curves to collapse against a seed-noise floor
+    that a one-member ensemble cannot compute.
+    """
+    scan = scale_free_scan(4211, 120, sizes=[(12, 9), (16, 12)], seeds=1)
+    assert scan["slope"]["n"] == 1
+    assert scan["slope"]["sd"] is None
+    assert scan["slope"]["se"] is None
+    assert scan["seedNoise"] is None
+    assert scan["collapseRatio"] is None
+    assert scan["verdict"] != "critical"
+
+
+def test_collapse_error_is_judged_against_the_seed_noise_floor() -> None:
+    """The old gate compared collapse to a bare 0.05 and passed every run it saw.
+
+    Spread across sizes is only evidence of a size effect if it beats the spread the
+    seed alone produces, so both are measured and the ratio is what the verdict reads.
+    """
+    scan = scale_free_scan(4211, 200, sizes=[(12, 9), (16, 12), (20, 15)], seeds=3)
+    assert scan["seedNoise"] is not None
+    assert scan["collapseRatio"] == round(
+        scan["dataCollapseError"] / scan["seedNoise"], 4
+    )
+
+
+def test_verdict_stays_inconclusive_when_the_interval_straddles_a_threshold() -> None:
+    points = [
+        {"L": 12, "degenerate": False, "xiFloored": False},
+        {"L": 16, "degenerate": False, "xiFloored": False},
+    ]
+    straddling = {"mean": 0.2, "sd": 0.3, "se": 0.15, "ci95": [-0.094, 0.494], "n": 8}
+    assert _scale_free_verdict(points, straddling, 1.0) == "inconclusive"
+    # Same mean, tight enough to sit wholly inside the middle band: a real answer.
+    tight = {"mean": 0.2, "sd": 0.02, "se": 0.01, "ci95": [0.18, 0.22], "n": 8}
+    assert _scale_free_verdict(points, tight, 1.0) == "intermediate"
+    # Wholly below the flat threshold, so it may commit.
+    flat = {"mean": 0.01, "sd": 0.02, "se": 0.01, "ci95": [-0.01, 0.03], "n": 8}
+    assert _scale_free_verdict(points, flat, 1.0) == "sub_critical"
+
+
+def test_critical_needs_both_a_clear_slope_and_a_collapse() -> None:
+    points = [
+        {"L": 12, "degenerate": False, "xiFloored": False},
+        {"L": 16, "degenerate": False, "xiFloored": False},
+    ]
+    steep = {"mean": 0.4, "sd": 0.03, "se": 0.015, "ci95": [0.371, 0.429], "n": 8}
+    assert _scale_free_verdict(points, steep, 1.0) == "critical"
+    # Same slope, but the sizes disagree by far more than seed noise explains — there
+    # is a real size effect in the curves, so they do not collapse.
+    assert _scale_free_verdict(points, steep, 4.0) == "inconclusive"
+    # And with no ensemble there is no floor to judge the collapse against at all.
+    assert _scale_free_verdict(points, steep, None) == "inconclusive"
 
 
 def test_scale_free_scan_skips_unseedable_small_worlds() -> None:

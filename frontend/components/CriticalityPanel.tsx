@@ -1,4 +1,9 @@
-import type { CorrelationField, DiagnosticsData, ScaleFreeScan } from "@/lib/types";
+import type {
+  CorrelationField,
+  DiagnosticsData,
+  ScaleFreePoint,
+  ScaleFreeScan
+} from "@/lib/types";
 
 /**
  * Below this many region pairs, a point on the reach curve is an average over too
@@ -21,9 +26,13 @@ const VERDICT_COPY: Record<ScaleFreeScan["verdict"], { headline: string; note: s
     headline: "somewhere in between",
     note: "Reach grows with the world, but not fast enough to call it scale-free."
   },
+  inconclusive: {
+    headline: "the test did not settle it",
+    note: "The trend runs one way in some worlds and the other way in others, and the spread is wide enough to cover both answers. The run happened; it just did not decide anything."
+  },
   underpowered: {
     headline: "not measurable yet",
-    note: "Too many sizes bottomed out at the smallest distance the grid can express, so the trend is fitted through upper bounds rather than measurements. More sizes and more seeds would settle it."
+    note: "Too many sizes bottomed out at the smallest distance the grid can express, so the trend is fitted through upper bounds rather than measurements. More seeds will not fix this one — reach lands at one or two regions on maps twelve to twenty-four wide, so there is no room left to watch it grow. Bigger worlds would settle it."
   },
   degenerate: {
     headline: "nothing to measure",
@@ -77,13 +86,18 @@ export function CriticalityPanel({ data }: { data: DiagnosticsData }) {
         <section className="crit-plate">
           <PlateHead
             title="The deciding test: grow the world"
-            evidence={`${scaleFree.points.length} sizes · 1 seed · measured at tick ${scaleFree.measuredAtTick}`}
+            evidence={`${scaleFree.points.length} sizes · ${scaleFree.seeds} seed${
+              scaleFree.seeds === 1 ? "" : "s"
+            } · ${scaleFree.scanTicks.toLocaleString()} ticks deep`}
           >
             Build the same universe at four sizes and watch what the reach does. If Alpha were poised
             the way a flock is, reach would grow right along with the map and this line would run
-            flat.
+            flat. Every world gets rebuilt under {scaleFree.seeds} different starting seeds, because
+            the same rules land differently depending on where they start — one world cannot tell you
+            which of those you are looking at.
           </PlateHead>
           <ScanChart scan={scaleFree} />
+          <SlopeReading scan={scaleFree} />
         </section>
       ) : null}
 
@@ -162,26 +176,62 @@ function ScaleFreeVerdict({ scan, tick }: { scan: ScaleFreeScan | null; tick: nu
         <p className="eyebrow">The answer</p>
         <p className="crit-answer">Not measured yet.</p>
         <p className="crit-answer-note">
-          The deciding test rebuilds this universe at four sizes and replays every tick, so it runs on
-          the simulation worker rather than when you open the page. No result has been parked yet —
-          which is a blank, not a verdict.
+          The deciding test rebuilds this universe at four sizes under eight different seeds, so it
+          runs on the simulation worker rather than when you open the page. No result has been parked
+          yet — which is a blank, not a verdict.
         </p>
       </>
     );
   }
   const copy = VERDICT_COPY[scan.verdict];
-  const stale = tick - scan.measuredAtTick;
+  const stale = scan.universeTick === null ? null : tick - scan.universeTick;
   return (
     <>
       <p className="eyebrow">The answer</p>
       <p className="crit-answer">{copy.headline}.</p>
       <p className="crit-answer-note">{copy.note}</p>
       <p className="crit-provenance">
-        Measured at tick {scan.measuredAtTick.toLocaleString()}
-        {stale > 0 ? ` · ${stale.toLocaleString()} ticks ago` : null} · took{" "}
+        {/* The scan replays its own worlds to a fixed depth, so its depth and Alpha's
+            age are two different numbers. Naming both keeps the reader from reading
+            the depth as "how old Alpha was" — they were the same field once. */}
+        {scan.seeds} seeds × {scan.points.length} sizes, each replayed{" "}
+        {scan.scanTicks.toLocaleString()} ticks
+        {scan.universeTick === null
+          ? null
+          : ` · run while Alpha was at tick ${scan.universeTick.toLocaleString()}`}
+        {stale !== null && stale > 0 ? ` (${stale.toLocaleString()} ticks ago)` : null} · took{" "}
         {(scan.durationMs / 1000).toFixed(1)}s
       </p>
     </>
+  );
+}
+
+/**
+ * The slope of reach against world size, with the spread the seeds actually produced.
+ *
+ * The interval is the point of the whole ensemble. This slope moves by roughly ±0.09
+ * between seeds on its own, and the band separating "flat" from "grows with the world"
+ * is 0.17 wide — so a single world's slope lands wherever its seed puts it, and the
+ * verdict above is only allowed to commit when the whole interval clears a threshold.
+ */
+function SlopeReading({ scan }: { scan: ScaleFreeScan }) {
+  const slope = scan.slope;
+  if (!slope || slope.mean === null) return null;
+  if (slope.se === null || slope.ci95 === null) {
+    return (
+      <p className="crit-provenance">
+        Trend {slope.mean.toFixed(3)} — one seed, so there is no spread to quote and no
+        verdict this can carry.
+      </p>
+    );
+  }
+  const [low, high] = slope.ci95;
+  return (
+    <p className="crit-provenance">
+      Trend {slope.mean.toFixed(3)} ± {slope.se.toFixed(3)} across {slope.n} seeds (95% of
+      the time between {low.toFixed(3)} and {high.toFixed(3)}; seed-to-seed spread{" "}
+      {slope.sd?.toFixed(3)}). Flat is under 0.08, flocking is 0.25 and up.
+    </p>
   );
 }
 
@@ -287,9 +337,9 @@ function PairProfile({ field }: { field: CorrelationField }) {
               rx={2}
               className={n >= TRUST_PAIRS ? "crit-bar" : "crit-bar crit-bar-faint"}
             >
-              <title>
-                {r} apart — {n} pairs
-              </title>
+              {/* One template string, not interpolated children: React drops <title>
+                  children that arrive as an array, so the split form rendered nothing. */}
+              <title>{`${r} apart — ${n} pairs`}</title>
             </rect>
           );
         })}
@@ -311,6 +361,19 @@ function PairProfile({ field }: { field: CorrelationField }) {
   );
 }
 
+/**
+ * One rung's hover text, built as a single string — React drops <title> children that
+ * arrive as an array, so interpolating them inline renders no tooltip at all.
+ */
+function tooltip(p: ScaleFreePoint & { xiOverL: number }): string {
+  const reach = p.xiFloored ? "under 1, at floor" : String(p.xi);
+  const spread = p.xiSd === null ? "" : `, spread ${p.xiSd}`;
+  const floored = p.flooredSeeds
+    ? ` · at floor in ${p.flooredSeeds} of ${p.seeds}`
+    : "";
+  return `${p.L} regions wide — reach ${reach} across ${p.seeds} seeds${spread}${floored}`;
+}
+
 function ScanChart({ scan }: { scan: ScaleFreeScan }) {
   const W = 1000;
   const H = 210;
@@ -320,10 +383,18 @@ function ScanChart({ scan }: { scan: ScaleFreeScan }) {
   const mb = 34;
   const iw = W - ml - mr;
   const ih = H - mt - mb;
-  const yMax = Math.max(0.18, ...scan.points.map((p) => p.xiOverL)) * 1.15;
-  const x = (i: number) => ml + (i / Math.max(1, scan.points.length - 1)) * iw;
-  const y = (v: number) => mt + ih - (v / yMax) * ih;
-  const ref = scan.points[0]?.xiOverL ?? 0;
+  // A rung where every seed came back degenerate has no reach to plot. It stays out
+  // of the line rather than being drawn at zero, which would read as a measurement.
+  const points = scan.points.filter(
+    (p): p is typeof p & { xiOverL: number } => p.xiOverL !== null
+  );
+  if (!points.length) return null;
+  // Whiskers are the standard error of each rung's mean, in the chart's ξ/L units.
+  const errOf = (p: (typeof points)[number]) => (p.xiSe ?? 0) / p.L;
+  const yMax = Math.max(0.18, ...points.map((p) => p.xiOverL + errOf(p))) * 1.15;
+  const x = (i: number) => ml + (i / Math.max(1, points.length - 1)) * iw;
+  const y = (v: number) => mt + ih - (Math.max(0, v) / yMax) * ih;
+  const ref = points[0].xiOverL;
 
   return (
     <div className="crit-scroll">
@@ -333,31 +404,46 @@ function ScanChart({ scan }: { scan: ScaleFreeScan }) {
           flat = flocking
         </text>
         <path
-          d={scan.points.map((p, i) => `${i ? "L" : "M"}${x(i)} ${y(p.xiOverL)}`).join("")}
+          d={points.map((p, i) => `${i ? "L" : "M"}${x(i)} ${y(p.xiOverL)}`).join("")}
           className="crit-line"
         />
-        {scan.points.map((p, i) => (
+        {points.map((p, i) => (
           <g key={p.L}>
+            {p.xiSe === null ? null : (
+              <line
+                x1={x(i)}
+                x2={x(i)}
+                y1={y(p.xiOverL - errOf(p))}
+                y2={y(p.xiOverL + errOf(p))}
+                className="crit-whisker"
+              />
+            )}
             <circle
               cx={x(i)}
               cy={y(p.xiOverL)}
               r={5.5}
               className={p.xiFloored ? "crit-dot crit-dot-floored" : "crit-dot"}
             >
-              <title>
-                {p.L} regions wide — reach {p.xiFloored ? "under 1, at floor" : p.xi}
-              </title>
+              <title>{tooltip(p)}</title>
             </circle>
             <text x={x(i)} y={H - 12} textAnchor="middle" className="crit-tick">
               {p.L} wide
             </text>
-            <text x={x(i)} y={y(p.xiOverL) - 13} textAnchor="middle" className="crit-point-label">
+            <text
+              x={x(i)}
+              y={y(p.xiOverL + errOf(p)) - 9}
+              textAnchor="middle"
+              className="crit-point-label"
+            >
               {p.xiOverL.toFixed(3)}
             </text>
           </g>
         ))}
         <text x={ml + iw + 10} y={mt + 14} className="crit-legend">
           ○ reach at floor
+        </text>
+        <text x={ml + iw + 10} y={mt + 30} className="crit-legend">
+          ┃ spread across seeds
         </text>
       </svg>
     </div>

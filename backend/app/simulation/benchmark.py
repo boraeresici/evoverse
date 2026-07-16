@@ -206,12 +206,29 @@ def _print_diagnostics(report: dict) -> None:
             print(f"  {field}: ξ={result['xi']} (c0={result['c0']}){flag}")
     if "scaleFree" in report:
         scan = report["scaleFree"]
-        print(f"Scale-free scan (field={scan['field']}): verdict={scan['verdict']}")
-        print(f"  dataCollapseError={scan['dataCollapseError']}")
-        for point in scan["points"]:
+        slope = scan["slope"]
+        print(
+            f"Scale-free scan (field={scan['field']}, seeds={len(scan['seeds'])}): "
+            f"verdict={scan['verdict']}"
+        )
+        if slope["se"] is None:
+            # One seed has no error bar, and the slope's seed-to-seed spread swamps
+            # the thresholds the verdict uses. Say so where the number is printed.
+            print(f"  slope={slope['mean']} — single seed, no error bar; not a verdict")
+        else:
             print(
-                f"  L={point['L']:>3}  ξ={point['xi']:>6}  ξ/L={point['xiOverL']}"
-                f"{'  [floored]' if point['xiFloored'] else ''}"
+                f"  slope={slope['mean']} ± {slope['se']} (sd={slope['sd']}) "
+                f"95% CI [{slope['ci95'][0]}, {slope['ci95'][1]}]"
+            )
+        print(
+            f"  dataCollapseError={scan['dataCollapseError']} "
+            f"seedNoise={scan['seedNoise']} ratio={scan['collapseRatio']}"
+        )
+        for point in scan["points"]:
+            spread = f" ± {point['xiSd']}" if point["xiSd"] is not None else ""
+            print(
+                f"  L={point['L']:>3}  ξ={point['xi']:>6}{spread}  ξ/L={point['xiOverL']}"
+                f"  floored={point['flooredSeeds']}/{point['seeds']}"
             )
     if "patterns" in report:
         patterns = report["patterns"]
@@ -288,6 +305,16 @@ def main() -> None:
         help=f"Comma-separated WxH sizes for --scale-free (default {DEFAULT_SCALE_FREE_SIZES}).",
     )
     parser.add_argument(
+        "--scan-seeds",
+        type=int,
+        default=1,
+        help=(
+            "Ensemble size for --scale-free: replay the ladder under this many "
+            "consecutive seeds. The default of 1 is fast and exploratory, not a "
+            "verdict — the slope moves by ~0.09 between seeds. The worker runs 8."
+        ),
+    )
+    parser.add_argument(
         "--field",
         default="stability",
         help="Field for --scale-free (default stability).",
@@ -315,7 +342,11 @@ def main() -> None:
         )
     if args.scale_free:
         report["scaleFree"] = scale_free_scan(
-            args.seed, args.ticks, sizes=_parse_sizes(args.sizes), field=args.field
+            args.seed,
+            args.ticks,
+            sizes=_parse_sizes(args.sizes),
+            field=args.field,
+            seeds=args.scan_seeds,
         )
 
     if args.json:
