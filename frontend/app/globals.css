@@ -5841,3 +5841,113 @@ p {
 .crit-struck { color: var(--brick); }
 .crit-equals { color: var(--muted); }
 .crit-table-note { font-size: 0.85rem; color: var(--muted); max-width: 72ch; margin: 0.75rem 0 0; }
+
+/* Organism Lens — the 3D close-up that unlocks once a lineage carries one hand. */
+.lens-locked,
+.lens-open {
+  align-items: center;
+  background: #f8f4eb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 1fr;
+  margin-top: 12px;
+  min-height: 66px;
+  padding: 12px 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.lens-locked {
+  color: var(--muted);
+}
+
+.lens-open {
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.lens-open:hover {
+  border-color: var(--cyan);
+}
+
+.lens-locked strong,
+.lens-open strong {
+  display: block;
+  font-weight: 800;
+}
+
+.lens-locked small,
+.lens-open small {
+  color: var(--muted);
+  display: block;
+}
+
+.lens-shell {
+  margin-top: 12px;
+}
+
+.lens-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.lens-head .eyebrow {
+  margin: 0;
+}
+
+.lens-stage {
+  background: radial-gradient(circle at 50% 40%, #fffdf8, #ece7db);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  height: 320px;
+  margin-top: 10px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.lens-stage-loading {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  align-content: center;
+}
+
+.lens-stage canvas {
+  display: block;
+}
+
+.lens-readout {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 10px 0 0;
+}
+
+.lens-readout dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lens-readout dd {
+  font-weight: 800;
+  margin: 2px 0 0;
+}
+
+.lens-warning {
+  color: var(--brick);
+  font-weight: 700;
+  margin: 8px 0 0;
+}
+
+.lens-fallback {
+  color: var(--muted);
+  margin: 10px 0 0;
+}

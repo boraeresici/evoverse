@@ -25,7 +25,13 @@ const SPECIES_HELP = [
     body: "Follow the species to collect its activity in your notifications digest, or export a shareable PNG species card."
   }
 ];
-import { getDynamicReport, getObserverFollows, getSpecies, getSpeciesList } from "@/lib/api";
+import {
+  getDynamicReport,
+  getObserverFollows,
+  getRegions,
+  getSpecies,
+  getSpeciesList
+} from "@/lib/api";
 
 export default async function SpeciesPage({
   params
@@ -33,11 +39,15 @@ export default async function SpeciesPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [data, follows, report, speciesList] = await Promise.all([
+  // The origin region id only arrives with the species, but fetching the region
+  // list alongside keeps this one round trip instead of two — the page already
+  // pulls the full species list the same way.
+  const [data, follows, report, speciesList, regions] = await Promise.all([
     getSpecies(id),
     getObserverFollows(),
     getDynamicReport({ scope: "species", speciesId: id, limit: 18 }),
-    getSpeciesList()
+    getSpeciesList(),
+    getRegions()
   ]);
 
   if (!data) {
@@ -96,6 +106,9 @@ export default async function SpeciesPage({
         data={data}
         allSpecies={speciesList?.species ?? []}
         report={report}
+        originRegion={
+          regions?.regions.find((region) => region.id === data.species.originRegionId) ?? null
+        }
       />
 
       <section className="population-list">

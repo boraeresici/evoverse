@@ -13,6 +13,7 @@ import {
   SkipForward
 } from "lucide-react";
 import { MicroLifeField } from "@/components/MicroLifeField";
+import { OrganismLens } from "@/components/OrganismLens";
 import { PhylogeneticTree } from "@/components/PhylogeneticTree";
 import {
   CATEGORY_META,
@@ -22,12 +23,20 @@ import {
   type EventCategory
 } from "@/lib/speciesEvents";
 import { CARD_HEIGHT, CARD_WIDTH, buildSpeciesCardSvg } from "@/lib/speciesCard";
-import type { DynamicReportData, RegionDetail, SpeciesDetail, SpeciesSummary } from "@/lib/types";
+import type {
+  DynamicReportData,
+  RegionDetail,
+  RegionSummary,
+  SpeciesDetail,
+  SpeciesSummary
+} from "@/lib/types";
 
 type SpeciesExplorationPanelProps = {
   data: SpeciesDetail;
   allSpecies: SpeciesSummary[];
   report: DynamicReportData | null;
+  /** The lineage's origin region — the Lens gates on its chirality lock. */
+  originRegion: RegionSummary | null;
 };
 
 const PLAYBACK_INTERVAL_MS = 1600;
@@ -35,7 +44,8 @@ const PLAYBACK_INTERVAL_MS = 1600;
 export function SpeciesExplorationPanel({
   data,
   allSpecies,
-  report
+  report,
+  originRegion
 }: SpeciesExplorationPanelProps) {
   const extinctLineage = data.species.status === "extinct";
 
@@ -206,6 +216,8 @@ export function SpeciesExplorationPanel({
             report={report}
             title="Distribution Field"
           />
+
+          <OrganismLens originRegion={originRegion} species={data.species} />
         </article>
       </div>
     </section>
