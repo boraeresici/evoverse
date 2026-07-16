@@ -178,7 +178,6 @@ export default function OrganismLensCanvas({ body, form, mode, hue }: OrganismLe
     const organism = buildOrganism(body, form, hue);
     scene.add(organism);
 
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     shell.appendChild(renderer.domElement);
 
     function resize() {
@@ -187,6 +186,11 @@ export default function OrganismLensCanvas({ body, form, mode, hue }: OrganismLe
       if (width === 0 || height === 0) {
         return;
       }
+      // Browser zoom moves devicePixelRatio, so the ratio is set here rather
+      // than once at mount — otherwise the backing store drifts from the canvas.
+      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      // `false`: the backing store is ours, the display size is CSS's (see
+      // .lens-stage canvas). Passing true would fight the stylesheet.
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();

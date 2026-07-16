@@ -5918,8 +5918,13 @@ p {
   align-content: center;
 }
 
+/* The renderer sizes the backing store to width * dpr and leaves display size to
+   CSS (as .micro-life-canvas does). Without this the canvas lays out at its
+   backing-store size and overflows the stage by the pixel ratio. */
 .lens-stage canvas {
   display: block;
+  height: 100%;
+  width: 100%;
 }
 
 .lens-readout {
