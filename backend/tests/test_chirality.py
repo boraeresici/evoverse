@@ -294,6 +294,61 @@ def test_without_the_field_the_universe_locks_into_domains_and_is_denied_life() 
     assert not any(event.event_type == EventType.ERA_ADVANCED for event in state.events)
 
 
+def _rules_with_racemization(rate: float) -> SimulationRules:
+    return replace(
+        DEFAULT_SIMULATION_RULES,
+        chirality=replace(DEFAULT_SIMULATION_RULES.chirality, racemization_rate=rate),
+    )
+
+
+def test_racemization_above_the_gain_starves_the_universe() -> None:
+    """With racemization at or above `amplify_k` the control parameter
+    (amplify_k - racemization_rate) is non-positive, so racemic is stable: the
+    universe never breaks symmetry and never earns life, however long it runs."""
+    rules = _rules_with_racemization(DEFAULT_SIMULATION_RULES.chirality.amplify_k + 0.02)
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211, rules=rules).advance(state, ticks=600)
+
+    assert not any(region.chirality_locked for region in state.regions.values())
+    assert state.universe.homochirality_index < rules.chirality.life_gate_index
+    assert state.universe.current_era == Era.EXPANSION
+    assert all(species.chirality == 0 for species in state.species.values())
+
+
+def test_racemization_can_grant_life_while_nothing_ever_latches() -> None:
+    """The silent zone `_validate_chirality_latch` warns about, pinned.
+
+    Just past the latch cliff (~0.018 measured) regions settle short of
+    `ee_lock_threshold` and hover there forever, while the mean is still high
+    enough to clear the gate. The life gate reads the universe mean rather than
+    the locks, so Stabilization is granted — while no region latches, no lineage
+    adopts a hand, and everything downstream of the lock (hand inheritance,
+    heterochiral selection, the Organism Lens) silently never happens. The window
+    is narrow (by 0.03 the mean has fallen under the gate too and the universe is
+    merely starved, not hollow), which is exactly why it is worth pinning: it is
+    easy to tune into by accident. This is why the default sits well below it."""
+    rules = _rules_with_racemization(0.02)
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211, rules=rules).advance(state, ticks=600)
+
+    assert state.universe.homochirality_index >= rules.chirality.life_gate_index
+    assert state.universe.current_era == Era.STABILIZATION  # life is granted...
+    assert not any(region.chirality_locked for region in state.regions.values())
+    assert all(species.chirality == 0 for species in state.species.values())  # ...emptily
+
+
+def test_default_racemization_still_lets_every_region_latch() -> None:
+    """The default must stay on the latching side of the cliff — the whole T1
+    tier hangs off the lock."""
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211).advance(state, ticks=600)
+
+    assert DEFAULT_SIMULATION_RULES.chirality.racemization_rate > 0
+    assert all(region.chirality_locked for region in state.regions.values())
+    assert state.universe.domain_count == 1
+    assert all(species.chirality != 0 for species in state.species.values())
+
+
 def test_intelligence_era_is_unreachable_in_t1() -> None:
     mind_gate = DEFAULT_SIMULATION_RULES.chirality.mind_gate_index
     state = seed_alpha(seed=4211)

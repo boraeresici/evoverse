@@ -31,6 +31,8 @@ one **species** in that region). Symbols used throughout:
 | $H$ | universe homochirality index — *global* single-handedness, $\lvert\text{mean }\mathit{ee}\rvert$ | $[0,1]$ | `Universe.homochirality_index` |
 | $L$ | local order index — $\text{mean }\lvert \mathit{ee}\rvert$, blind to whether regions agree | $[0,1]$ | `Universe.local_order_index` |
 | $\beta$ | universe-wide symmetry-breaking field strength | — | `ChiralityRules.field_strength` |
+| $\lambda$ | racemization rate — the back-reaction amplification must beat | — | `ChiralityRules.racemization_rate` |
+| $\mu$ | pitchfork control parameter, $k-\lambda$; $\le 0$ ⇒ racemic is stable | — | derived |
 
 Two clamps are used everywhere:
 
@@ -125,14 +127,50 @@ contingent, but every region feels the same push:
 
 $$B = \pm1 \ \text{(per seed)},\qquad \text{field} = \beta\,B,\quad \beta=\text{fieldStrength}$$
 
-**Bifurcation.** Each *unlocked* region runs a pitchfork step — the cubic term
-$\mathit{ee}(1-\mathit{ee}^2)$ makes $0$ an unstable fixed point and $\pm1$ stable,
-so any tiny bias self-amplifies. Noise shrinks to $0$ as $|\mathit{ee}|\to1$; the
-field does **not** (it is external, not a property of the region's state):
+**Bifurcation.** Each *unlocked* region runs a pitchfork step. Amplification (the
+cubic) races **racemization** $\lambda$, the thermal back-reaction pulling any
+excess toward 50/50. Noise shrinks to $0$ as $|\mathit{ee}|\to1$; the field does
+**not** (it is external, not a property of the region's state):
 
 $$\text{noise} = (2\rho-1)\cdot\text{noiseScale}\cdot(1-|\mathit{ee}|),\quad \rho\sim U(0,1)$$
 
-$$\mathit{ee} \leftarrow \operatorname{clamp}_\pm\!\big(\mathit{ee} + k\,\mathit{ee}(1-\mathit{ee}^2) + \beta B + \text{noise}\big),\quad k=\text{amplifyK}$$
+$$\mathit{ee} \leftarrow \operatorname{clamp}_\pm\!\big(\mathit{ee} + k\,\mathit{ee}(1-\mathit{ee}^2) - \lambda\,\mathit{ee} + \beta B + \text{noise}\big)$$
+
+with $k=\text{amplifyK}$, $\lambda=\text{racemizationRate}$. Grouping the linear
+terms gives the pitchfork normal form and, with it, an actual **control
+parameter**:
+
+$$\mathit{ee} \leftarrow \mathit{ee} + \mu\,\mathit{ee} - k\,\mathit{ee}^3 + \beta B + \text{noise},\qquad \mu = k-\lambda$$
+
+This is what makes the step a bifurcation rather than a permanently
+post-bifurcation regime: $\mu>0$ leaves $\mathit{ee}=0$ unstable and a region
+commits; $\mu\le0$ makes racemic stable and no number of ticks produces a hand.
+Without $\lambda$ the gain had nothing to race, so $\mu=k>0$ always and every
+region committed unconditionally.
+
+**Where it settles, and the latch cliff.** Ignoring field and noise, the drift
+settles at
+
+$$\mathit{ee}^\ast = \sqrt{1 - \lambda/k}$$
+
+which falls below $\text{eeLockThreshold}$ *long before* $\mu$ reaches zero. Past
+that point regions hover short of the latch forever. That matters far more than
+$\mu\le0$ does, because everything in T1 downstream of the lock — lineages
+adopting a hand (§6.2), heterochiral selection (§5), the Organism Lens — is gated
+on `chirality_locked`, while the **Era gate reads the universe mean, not the
+locks**. So there is a narrow window where a universe *earns Stabilization while
+nothing ever latches and no lineage ever adopts a hand*. Measured at
+$\lambda=0.02$: mean $0.85$ (gate passes), **0/108 regions locked**. By
+$\lambda=0.03$ the mean has fallen under the gate too and the universe is merely
+starved rather than hollow.
+
+The naive cliff from $\mathit{ee}^\ast$ alone is $\lambda = k(1-\text{lock}^2) =
+0.0114$, but the latch is an **absorbing barrier** — irreversible — so noise and
+the field carry regions over it even when the deterministic fixed point sits
+below. Measured, latching survives to about $\lambda=0.018$. The default $0.008$
+($\mathit{ee}^\ast=0.93$) sits well clear: all 108 regions latch, and life is
+earned at tick $50$ rather than $44$ — racemization is a headwind, not a wall.
+`_validate_chirality_latch` warns on both failure modes from the rules screen.
 
 Without $\beta B$ the cubic term amplifies whichever way each region's *local*
 noise happened to push, and the map freezes into opposing domains: every region
@@ -150,8 +188,8 @@ broken hand spreads across the map. Then lineages adopt their origin region's ha
 (one-way; §6.2) and the universe metrics recompute (§7).
 
 **Constants** ([`ChiralityRules`](../backend/app/simulation/rules.py#L112)):
-$k=0.06$, noiseScale $=0.03$, $\beta=0.005$, lock $=0.9$, bleed $=0.05$,
-avalancheMinSource $=0.75$.
+$k=0.06$, $\lambda=0.008$ (so $\mu=0.052$), noiseScale $=0.03$, $\beta=0.005$,
+lock $=0.9$, bleed $=0.05$, avalancheMinSource $=0.75$.
 
 ---
 

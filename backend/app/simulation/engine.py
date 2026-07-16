@@ -211,13 +211,27 @@ class SimulationEngine:
         field = rules.field_strength * self._field_direction(state)
 
         for region in state.regions.values():
+            # A latched region does not racemize: the lock stands for the
+            # self-sustaining, autocatalytic fixation that outruns the back-
+            # reaction (Ozturk's avalanche magnetization is persistent, not a
+            # steady state held up by ongoing work). Racemization is a pressure on
+            # regions still deciding, not a tax on ones that already decided.
             if region.chirality_locked:
                 continue
             rng = stable_rng(state.seed, "chirality-drift", state.universe.tick, region.id)
             ee = region.chirality_ee
             # Noise fades as a region commits; the field does not — it is external.
             noise = (rng.random() * 2 - 1) * rules.noise_scale * (1 - abs(ee))
-            ee = clamp_signed(ee + rules.amplify_k * ee * (1 - ee * ee) + field + noise)
+            # amplify_k*ee*(1-ee^2) - racemization_rate*ee  =>  effective gain
+            # (amplify_k - racemization_rate)*ee - amplify_k*ee^3: the pitchfork
+            # normal form, with mu = amplify_k - racemization_rate as its control.
+            ee = clamp_signed(
+                ee
+                + rules.amplify_k * ee * (1 - ee * ee)
+                - rules.racemization_rate * ee
+                + field
+                + noise
+            )
             if abs(ee) >= rules.ee_lock_threshold:
                 region.chirality_ee = math.copysign(1.0, ee)
                 region.chirality_locked = True

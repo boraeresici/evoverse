@@ -180,6 +180,7 @@ class ChiralityRules:
     # --- T1: molecular symmetry breaking (bifurcation) ---
     seed_bias_max: float = 0.02          # |initial ee| drawn from stable_rng(seed,"chirality")
     amplify_k: float = 0.06              # bifurcation gain; catalyst can raise this
+    racemization_rate: float = 0.008     # back-reaction the gain must beat; mu = k - lambda
     noise_scale: float = 0.03            # racemic-zone jitter, damped by |ee|
     field_strength: float = 0.005        # universe-wide field (the magnetized surface)
     ee_lock_threshold: float = 0.90      # |ee| at/above which the region latches
@@ -236,11 +237,48 @@ For each **unlocked** region, per tick:
 ```
 r   = stable_rng(seed, "chirality", region.id, tick)
 noise = (r.random()*2 - 1) * noise_scale * (1 - |ee|)    # fades as the region commits
-ee += amplify_k * ee * (1 - ee**2) + field + noise       # pitchfork, biased by the field
+ee += amplify_k * ee * (1 - ee**2)   \                   # amplification...
+    - racemization_rate * ee         \                   # ...racing the back-reaction
+    + field + noise                                      # pitchfork, biased by the field
 if |ee| >= ee_lock_threshold:
     region.chirality_ee   = sign(ee)                 # snap to full hand
     region.chirality_locked = True                   # irreversible latch
 ```
+
+**Racemization is what makes this a bifurcation.** Grouping the linear terms gives
+`(amplify_k - racemization_rate)*ee - amplify_k*ee**3` — the pitchfork normal form
+with control parameter `mu = amplify_k - racemization_rate`. Above zero, racemic is
+unstable and a region commits; at or below zero it is stable and no number of ticks
+produces a hand. Without racemization there was nothing for the gain to race, so
+`mu = amplify_k > 0` always and the "bifurcation" never had a parameter to cross —
+every region committed unconditionally, which is why the era gate could not be
+missed. This is also the race every real prebiotic chemistry runs; Frank's 1953
+model and Öztürk's crystallization both live or die on it.
+
+A **latched region does not racemize** — the loop skips locked regions entirely.
+The lock stands for autocatalytic fixation that has become self-sustaining, which
+is exactly Öztürk's avalanche-magnetization claim: the magnetized state persists
+rather than being held up by ongoing work. Racemization is a pressure on regions
+still deciding, not a tax on ones that already decided.
+
+**The cliff that matters is the latch, not `mu`.** Ignoring field and noise the
+drift settles at `ee* = sqrt(1 - racemization_rate/amplify_k)`, which drops below
+`ee_lock_threshold` well before `mu` reaches zero. Since everything downstream —
+hand inheritance (§6.2), heterochiral selection (§6.3), the Organism Lens (§8) —
+is gated on `chirality_locked`, while the Era gate reads the universe *mean*, there
+is a narrow window where a universe **earns Stabilization while nothing ever latches
+and no lineage ever adopts a hand**. Measured at `racemization_rate = 0.02`: mean
+0.85 (gate passes), 0/108 locked. By 0.03 the mean is under the gate too and the
+universe is merely starved rather than hollow. `_validate_chirality_latch` warns on
+both from the rules screen, and `test_racemization_can_grant_life_while_nothing_ever_latches`
+pins the hollow case.
+
+The naive cliff is `amplify_k * (1 - lock**2) = 0.0114`, but that under-predicts:
+the latch is an **absorbing barrier**, so noise and the field carry regions over it
+even when the deterministic fixed point sits below. Measured, latching survives to
+about 0.018. The default 0.008 (`ee* = 0.93`) sits clear of it — all 108 regions
+latch, and life is earned at tick 50 rather than 44. Racemization is a headwind,
+not a wall: same destination, slower.
 
 **Why the field is load-bearing, not decoration.** Öztürk's contribution is not
 that symmetry breaks — Frank showed autocatalysis alone does that in 1953 — it is
@@ -472,5 +510,10 @@ keep the "it validates us" language out. Convergence is a compass, not a certifi
    `local_order_index` / `domain_count` alongside it (§4, §6.4). Together these fix
    a gate that previously handed the Stabilization Era to globally racemic
    universes. Covered in `backend/tests/test_chirality.py`.
+3c. **Racemization — DONE:** `racemization_rate` (§6.1) gives the pitchfork a real
+   control parameter `mu = amplify_k - racemization_rate`; before it, the gain had
+   nothing to race and every region committed unconditionally. A universe can now be
+   starved of a hand entirely, and the rules screen warns on the narrow window where
+   the era is granted but nothing latches. Covered in `backend/tests/test_chirality.py`.
 4. **Organism Lens** (three.js) reading the maturity metric (§8).
 5. **T2 cognitive tier (§6.5)** + the Lens's world-model mode.

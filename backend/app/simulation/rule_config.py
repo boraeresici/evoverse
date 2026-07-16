@@ -287,10 +287,46 @@ def _validate_semantics(
         warnings.append(_warning("region.forcedCollapseStability", "Forced collapse stability is above the collapse threshold."))
     if rules.region.forced_collapse_resource > rules.region.collapse_resource_threshold:
         warnings.append(_warning("region.forcedCollapseResource", "Forced collapse resource is above the collapse threshold."))
+    _validate_chirality_latch(rules.chirality, warnings)
     if rules.speciation.child_min_population > rules.speciation.candidate_min_population:
         errors.append(_error("speciation.childMinPopulation", "Child minimum population cannot exceed candidate minimum population."))
     if rules.speciation.child_population_fraction >= 1:
         errors.append(_error("speciation.childPopulationFraction", "Child population fraction must stay below 1."))
+
+
+def _validate_chirality_latch(
+    chirality: ChiralityRules,
+    warnings: list[dict[str, str]],
+) -> None:
+    """Guard the two ways racemization can quietly hollow out the chirality tier.
+
+    Neither is an error — starving a universe is a legitimate experiment — but
+    both are invisible from the rules screen, so they get said out loud.
+    """
+    if chirality.racemization_rate >= chirality.amplify_k:
+        warnings.append(
+            _warning(
+                "chirality.racemizationRate",
+                "Racemization at or above amplifyK leaves the control parameter "
+                "(amplifyK - racemizationRate) at or below zero, so racemic is stable: "
+                "no region ever breaks symmetry and the life gate is unreachable.",
+            )
+        )
+        return
+    settled_ee = math.sqrt(1 - chirality.racemization_rate / chirality.amplify_k)
+    if settled_ee < chirality.ee_lock_threshold:
+        warnings.append(
+            _warning(
+                "chirality.racemizationRate",
+                f"Regions settle near |ee| = {settled_ee:.2f}, short of the "
+                f"{chirality.ee_lock_threshold} latch, so they may hover instead of "
+                "locking. The life gate reads the universe mean, not the locks, so a "
+                "universe here can still earn Stabilization while no lineage ever "
+                "adopts a hand and the Organism Lens never unlocks. (Approximate: the "
+                "latch is irreversible, so noise and the field can still carry regions "
+                "over it — measured, latching survives to about 0.018.)",
+            )
+        )
 
 
 def _validate_number_ranges(public_rules: dict[str, Any], errors: list[dict[str, str]]) -> None:

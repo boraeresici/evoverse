@@ -120,6 +120,27 @@ class ChiralityRules:
     seed_bias_max: float = 0.02
     amplify_k: float = 0.06
     noise_scale: float = 0.03
+    # Thermal racemization: the back-reaction that pulls any excess toward 50/50.
+    # In real chemistry amplification always races this; with no opposing term the
+    # cubic gain `amplify_k` had nothing to beat, so every region committed no
+    # matter what and the gate could not be missed.
+    #
+    # The two together give the pitchfork an actual control parameter,
+    # mu = amplify_k - racemization_rate, which is what makes this a bifurcation
+    # rather than a permanent post-bifurcation regime: mu > 0 leaves ee = 0
+    # unstable and a region commits; mu <= 0 makes racemic stable and no number of
+    # ticks will produce a hand.
+    #
+    # But mu > 0 is not enough to *latch*. Ignoring field and noise, the drift
+    # settles at ee* = sqrt(1 - racemization_rate / amplify_k), which falls below
+    # `ee_lock_threshold` long before mu reaches zero. Past that, regions hover
+    # short of the latch forever — and because the life gate reads the universe
+    # mean rather than the locks, a universe there still *earns Stabilization while
+    # no lineage ever adopts a hand*. Measured: 0.020 leaves 0/108 regions locked
+    # with the era still granted. Keep this well under that cliff (~0.018 measured;
+    # the naive ee* formula puts it at 0.011, but the latch is an absorbing barrier
+    # so noise carries regions over it). At 0.008, ee* = 0.93 and all 108 latch.
+    racemization_rate: float = 0.008
     # Universe-wide symmetry-breaking field — the analogue of Ozturk & Sasselov's
     # magnetized surface (CISS). Without it, each region's hand is set by its own
     # local noise and the map freezes into opposing domains: locally locked,
