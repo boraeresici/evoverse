@@ -164,6 +164,36 @@ against ~13.3 billion rows/year unbounded.
 | `EVOVERSE_SNAPSHOT_COMPACT_BATCH` | `200` | Frames dropped per compaction call. |
 | `EVOVERSE_WORKER_COMPACT_EVERY_STEPS` | `30` | Worker steps between compaction sweeps. `0` disables. |
 
+## Diagnostics — one call that cannot be live
+
+`/universes/alpha/diagnostics` backs `/science`. Its live probes read current
+state and are cheap; the scale-free scan is not, and the gap is three orders of
+magnitude:
+
+| Call | Cost | Where it runs |
+|------|------|---------------|
+| `correlation_length` | 4.3 ms | per request |
+| `pattern_census` | 0.6 ms | per request |
+| `pattern_triggers` | 2.9 ms | per request |
+| **`scale_free_scan`** | **19 734 ms** | worker only |
+
+The scan re-seeds and replays the universe at four lattice sizes to ask whether ξ
+grows with L — the decisive criticality test. At ~20s of CPU it cannot be attached
+to a request: one page view would hold a worker for twenty seconds, and any
+concurrency would bury the box.
+
+So the worker runs it on a timer (`EVOVERSE_WORKER_SCAN_EVERY_STEPS`, ~2h at the
+default step) and upserts the result into `diagnostics_runs`. The API serves the
+cheap probes live and this row as a dated measurement, carrying the tick it was
+taken at. `scaleFree: null` is a real state — a universe nobody has scanned yet
+has no verdict, and the page renders the blank rather than implying one.
+
+`diagnostics_runs` is keyed on `(universe_id, kind)` and upserted, so it holds one
+row per diagnostic and cannot grow. Both other table families in this schema —
+logs and snapshots — were append-only with no retention and had to be bounded
+after they had already filled a disk. This one is bounded by its primary key from
+the start.
+
 ### Backlog — table partitioning
 
 `events_page` keeps a single growing table fast via indexes. When the table nears

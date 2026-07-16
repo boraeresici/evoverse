@@ -65,6 +65,7 @@ from app.persistence.schema import (
     catalyst_action_logs,
     catalyst_actions,
     catalyst_user_roles,
+    diagnostics_runs,
     events,
     metadata,
     notification_reads,
@@ -541,6 +542,50 @@ class AlphaStateRepository:
             "items": [dict(row) for row in rows],
             "total": total,
         }
+
+    def save_diagnostics_run(
+        self,
+        *,
+        universe_id: str,
+        kind: str,
+        seed: int,
+        ticks: int,
+        verdict: str,
+        duration_ms: float,
+        payload: dict,
+    ) -> None:
+        """Park the latest result for ``kind``, replacing any previous one.
+
+        Upsert rather than insert: the table is keyed on (universe_id, kind) so it
+        holds one row per diagnostic and never grows. Keeping a history would be a
+        separate, deliberate feature.
+        """
+        with self.engine.begin() as connection:
+            _upsert(
+                connection,
+                diagnostics_runs,
+                ["universe_id", "kind"],
+                {
+                    "universe_id": universe_id,
+                    "kind": kind,
+                    "seed": seed,
+                    "ticks": ticks,
+                    "verdict": verdict,
+                    "duration_ms": duration_ms,
+                    "payload": payload,
+                    "measured_at": datetime.now(UTC),
+                },
+            )
+
+    def diagnostics_run(self, kind: str, universe_id: str = "alpha") -> dict | None:
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                select(diagnostics_runs).where(
+                    diagnostics_runs.c.universe_id == universe_id,
+                    diagnostics_runs.c.kind == kind,
+                )
+            ).mappings().one_or_none()
+        return dict(row) if row is not None else None
 
     def compact_snapshots(self, universe_id: str = "alpha", *, budget: int | None = None) -> dict:
         """Drop up to SNAPSHOT_COMPACT_BATCH frames the current stride no longer keeps.

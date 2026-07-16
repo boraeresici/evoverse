@@ -595,3 +595,32 @@ def test_compact_snapshots_removes_detail_rows_with_the_frame(tmp_path, monkeypa
         "species_snapshots": 0,
         "population_snapshots": 0,
     }
+
+
+def test_diagnostics_run_keeps_only_the_latest_per_kind(tmp_path) -> None:
+    repository = AlphaStateRepository(
+        f"sqlite+pysqlite:///{tmp_path / 'alpha.db'}",
+        create_schema=True,
+    )
+    repository.save_alpha(seed_alpha(seed=4211))
+
+    for ticks, verdict in ((500, "underpowered"), (1500, "sub_critical")):
+        repository.save_diagnostics_run(
+            universe_id="alpha",
+            kind="scale_free_scan",
+            seed=4211,
+            ticks=ticks,
+            verdict=verdict,
+            duration_ms=19_734.0,
+            payload={"verdict": verdict, "points": [{"L": 12, "xi": 1.0}]},
+        )
+
+    run = repository.diagnostics_run("scale_free_scan")
+
+    # Upsert, not append: the table is keyed on (universe_id, kind) so a diagnostic
+    # that reruns forever still occupies one row.
+    assert run is not None
+    assert run["verdict"] == "sub_critical"
+    assert int(run["ticks"]) == 1500
+    assert run["payload"]["points"] == [{"L": 12, "xi": 1.0}]
+    assert repository.diagnostics_run("never_run") is None

@@ -818,3 +818,41 @@ def test_bad_request_error_contract() -> None:
     payload = response.json()
     assert payload["error"]["code"] == "bad_request"
     assert payload["error"]["status"] == 400
+
+
+def test_diagnostics_contract() -> None:
+    client = TestClient(app)
+
+    response = client.get("/universes/alpha/diagnostics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model"] == "diagnostics_v1"
+    assert payload["universe"]["seed"] > 0
+    assert set(payload["correlation"]) >= {"stability", "energy_level"}
+
+    stability = payload["correlation"]["stability"]
+    # Pair counts ride with the curve: they are what separates the measured span
+    # from the tail, where a handful of pairs can push C(r) past C(0) = 1.
+    assert [r for r, _ in stability["curve"]] == [r for r, _ in stability["pairs"]]
+    assert "xiFloored" in stability and "degenerate" in stability
+    assert "saturated" not in stability
+
+    # The scan is never computed in-request (~20s); it is whatever the worker
+    # parked, and null is a real state a fresh universe must be able to report.
+    assert "scaleFree" in payload
+    assert payload["scaleFree"] is None or "measuredAtTick" in payload["scaleFree"]
+
+
+def test_diagnostics_gates_trigger_lift_on_support() -> None:
+    client = TestClient(app)
+
+    families = client.get("/universes/alpha/diagnostics").json()["triggers"]["families"]
+
+    for name, family in families.items():
+        # Nothing below the support gate may reach a consumer: under it, lift is
+        # arithmetic on singletons rather than an association.
+        for row in family["reportable"]:
+            assert row["support"] >= 5, name
+        # The page shows its own reasoning, so the raw shape stays visible.
+        assert family["singletonRows"] <= family["rows"]

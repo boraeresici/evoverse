@@ -11,6 +11,7 @@ const routes: Array<{ path: string; priority: number; changeFrequency: MetadataR
   { path: "/chronicle", priority: 0.8, changeFrequency: "daily" },
   { path: "/genesis", priority: 0.7, changeFrequency: "monthly" },
   { path: "/purpose", priority: 0.7, changeFrequency: "monthly" },
+  { path: "/science", priority: 0.7, changeFrequency: "daily" },
   { path: "/resources", priority: 0.6, changeFrequency: "monthly" },
   { path: "/faq", priority: 0.6, changeFrequency: "monthly" },
   { path: "/reports", priority: 0.6, changeFrequency: "weekly" },

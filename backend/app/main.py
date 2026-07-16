@@ -379,6 +379,18 @@ def get_alpha_dynamic_report(
     return report
 
 
+@app.get("/universes/alpha/diagnostics")
+def get_alpha_diagnostics() -> dict:
+    """Criticality diagnostics behind /science.
+
+    Public and unauthenticated, like the other read surfaces: this is the science
+    the product is for, not an operator tool. The live probes cost ~8ms; the
+    scale-free scan is not computed here — it is read back from the worker's last
+    run. See docs/PERFORMANCE_LOOP.md.
+    """
+    return store.diagnostics()
+
+
 @app.get("/universes/alpha/snapshots")
 def get_alpha_snapshots(
     # Capped at the frame budget, not an arbitrary 100: compaction bounds all of

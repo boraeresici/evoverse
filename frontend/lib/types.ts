@@ -7,6 +7,9 @@ export type UniverseStatus = {
   regionCount: number;
   recentEvents: number;
   stabilityIndex: number;
+  chiralityEe: number;
+  homochiralityIndex: number;
+  chiralityLocked: boolean;
 };
 
 export type ChronicleEvent = {
@@ -36,6 +39,8 @@ export type RegionSummary = {
   resourceDensity: number;
   stability: number;
   lifeIndex: number;
+  chiralityEe: number;
+  chiralityLocked: boolean;
   collapsed: boolean;
   dominantSpeciesId: string | null;
   dominantSpeciesName: string | null;
@@ -51,6 +56,8 @@ export type SpeciesSummary = {
   emergedAtWorldAge: number;
   generation: number;
   parentSpeciesId: string | null;
+  chirality: number;
+  heterochiralLoad: number;
   traits: Record<string, number>;
   regions: Array<{ regionId: string; population: number; share: number }>;
   forecast: {
@@ -437,6 +444,13 @@ export type SnapshotRegionRow = {
   collapsed: boolean;
   populationCount: number;
   speciesCount: number;
+  // Raw snapshot payload — snake_case, passed through from the DB unchanged.
+  // Keys are optional: snapshots written before the chirality migrations have none.
+  payload: {
+    life_index?: number;
+    chirality_ee?: number;
+    chirality_locked?: boolean;
+  };
 };
 
 export type SnapshotSpeciesRow = {
@@ -452,6 +466,12 @@ export type SnapshotSpeciesRow = {
   populationCount: number;
   regionCount: number;
   traits: Record<string, number>;
+  // See SnapshotRegionRow.payload — snake_case, keys absent on older snapshots.
+  payload: {
+    emerged_at_world_age?: number;
+    chirality?: number;
+    heterochiral_load?: number;
+  };
 };
 
 export type SnapshotDetails = {
@@ -471,4 +491,105 @@ export type SnapshotDetails = {
     growthRate: number;
     migrationPressure: number;
   }>;
+};
+
+/**
+ * Criticality diagnostics behind /science.
+ *
+ * `pairs` rides alongside `curve` on purpose: C(r) is a mean over the region
+ * pairs that far apart, and that count collapses toward the map's diagonal (two
+ * pairs at the far corner of a 12x9). Without it there is no way to tell the
+ * measured span from the tail, where a single product can push C(r) past 1.
+ */
+export type CorrelationField = {
+  xi: number;
+  c0: number;
+  curve: Array<[number, number]>;
+  pairs: Array<[number, number]>;
+  /** C(r) is already negative at one step: xi is an upper bound, not a value. */
+  xiFloored: boolean;
+  /** No variance in the field at all — nothing to correlate; xi is meaningless. */
+  degenerate: boolean;
+  sampleSize: number;
+};
+
+export type ScaleFreePoint = {
+  width: number;
+  height: number;
+  L: number;
+  xi: number;
+  xiOverL: number;
+  xiFloored: boolean;
+  degenerate: boolean;
+};
+
+/** Null until the worker has run a scan — a fresh universe has no verdict yet. */
+export type ScaleFreeScan = {
+  verdict:
+    | "critical"
+    | "sub_critical"
+    | "intermediate"
+    | "underpowered"
+    | "degenerate"
+    | "insufficient";
+  measuredAtTick: number;
+  measuredAt: string;
+  durationMs: number;
+  field: string;
+  points: ScaleFreePoint[];
+  dataCollapseError: number | null;
+  skipped: Array<{ width: number; height: number; reason: string }>;
+};
+
+export type TriggerFamily = {
+  instances: number;
+  rows: number;
+  singletonRows: number;
+  topLift: number | null;
+  topSupport: number | null;
+  /** The singleton artefact's signature: lift can only equal n when support is 1. */
+  topLiftEqualsInstances: boolean;
+  /** Rows that clear the support gate. Everything else is withheld by the API. */
+  reportable: Array<{ pattern: string; condition: string; lift: number; support: number }>;
+};
+
+export type DiagnosticsData = {
+  model: "diagnostics_v1";
+  universe: {
+    id: string;
+    tick: number;
+    ageYears: number;
+    regions: number;
+    species: number;
+    seed: number;
+  };
+  correlation: Record<string, CorrelationField>;
+  census: {
+    morphotypes: {
+      distinct: number;
+      entropy: number;
+      effectiveCount: number;
+      convergenceIndex: number;
+      top: Array<{ sig: number[]; species: number; lineages: number; population: number }>;
+    };
+    spatialMotifs: {
+      distinct: number;
+      entropy: number;
+      effectiveCount: number;
+      top: Array<{ key: string; count: number }>;
+    };
+    domainSizePowerLaw: {
+      domains: number;
+      distinctSizes: number;
+      histogram: Array<[number, number]>;
+      tau: number | null;
+      rSquared: number | null;
+    };
+  };
+  triggers: {
+    mode: string;
+    minSupport: number;
+    families: Record<string, TriggerFamily>;
+  };
+  scaleFree: ScaleFreeScan | null;
 };

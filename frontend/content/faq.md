@@ -38,6 +38,26 @@ A fixed grid is also a deliberate product choice: it keeps the map learnable (yo
 
 Yes, as a future product decision — for example region subdivision (a region splits into sub-cells), carrying-capacity scaling with traits, or additional seeded universes. The current model is intentionally a fixed-grid ecology rather than a 4X-style expansion game.
 
+## What do "flocking", "reach" and "patches" mean on the Science page?
+
+They are our words, not the field's. The Science page asks a question borrowed from statistical physics, and physics has its own names for every part of it. We use plain ones so the page can be read without a background in the subject — but if you go looking for the literature, our words will not find it. Here is the mapping, so you can.
+
+- "Does Alpha flock?" is, in the literature, "is the system critical?" or "does it show scale-free correlations?". Nothing in physics is called flocking — the flock is simply where the phenomenon was famously measured, in [Cavagna et al., "Scale-free correlations in starling flocks", PNAS 107(26), 2010](https://www.pnas.org/doi/10.1073/pnas.1005766107).
+- The "reach curve" is the correlation function, written C(r). It measures how strongly two points agree, as a function of how far apart they are.
+- "Reach" as a single number is the correlation length, written ξ (xi). It is where C(r) first crosses zero: the distance past which agreement stops meaning anything.
+- "Patches" are domains, or clusters — neighbouring regions ruled by the same species. Physics asks whether their sizes follow a power law, P(s) ∝ s^−τ.
+- "At floor" is not a term at all, ours entirely. It means ξ landed at the smallest distance the grid can express, one region across, so the true value sits somewhere below that and only an upper bound can be reported. Distances on a fixed grid are whole numbers; there is nothing between neighbours.
+
+The measurement itself is not simplified anywhere. The page checks its own arithmetic against the constraint the starling paper proves, and leaves a number out when the evidence cannot carry it rather than rounding it into confidence. Only the vocabulary is ours.
+
+## Why does the Science page leave some numbers blank?
+
+Because it can compute them and they would not mean anything, and a printed number gets believed and quoted.
+
+Two examples. Alpha currently has eleven patches across three distinct sizes; the code can fit a power law to that and reports a 99.9% fit, but a line through three points is a fact about three points, not about Alpha. And the pattern-trigger tables score how much likelier a pattern is under given conditions — when a pattern appears exactly once, under conditions that also appear exactly once, the arithmetic can only return the total number of observations, so a "score of 30" out of 30 observations is the sample size, not a finding.
+
+So those slots stay visibly empty with the requirement written in, rather than greyed out. A faded number is still read.
+
 # Simulation mechanics
 
 ## Is the simulation deterministic and reproducible?

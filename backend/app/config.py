@@ -36,6 +36,7 @@ class Settings:
     worker_ticks_per_step: int
     worker_max_steps: int | None
     worker_compact_every_steps: int
+    worker_scan_every_steps: int
     allow_destructive_ops: bool
     worker_stale_seconds: float
     allow_local_admin: bool
@@ -75,6 +76,13 @@ def get_settings() -> Settings:
         # a pre-stride backlog, which is why it runs often enough to make progress
         # without a manual backfill. 0 disables it.
         worker_compact_every_steps=int(os.getenv("EVOVERSE_WORKER_COMPACT_EVERY_STEPS", "30")),
+        # How often the worker re-runs the scale-free scan, in steps. The scan
+        # replays four lattice sizes from seed and costs ~20s of CPU, so it is not
+        # something a request can trigger — the worker measures it on a timer and
+        # the API serves the parked result. The default is ~2h at a 2s step: the
+        # verdict answers "has this universe started flocking", which moves on the
+        # scale of hours, not ticks. 0 disables it, leaving the last row in place.
+        worker_scan_every_steps=int(os.getenv("EVOVERSE_WORKER_SCAN_EVERY_STEPS", "3600")),
         allow_destructive_ops=_as_bool(
             os.getenv("EVOVERSE_ALLOW_DESTRUCTIVE_OPS", "true" if env == "local" else "false")
         ),

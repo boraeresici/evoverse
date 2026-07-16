@@ -14,7 +14,7 @@ from app.persistence.migrations import (
 def test_discovers_initial_sql_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 12
+    assert len(migrations) == 13
     assert migrations[0].version == "001"
     assert migrations[0].name == "initial_schema"
     assert len(migrations[0].checksum) == 64
@@ -52,6 +52,9 @@ def test_discovers_initial_sql_migration() -> None:
     assert migrations[11].version == "012"
     assert migrations[11].name == "snapshot_frame_budget"
     assert "idx_universe_snapshots_universe_tick" in migrations[11].sql
+    assert migrations[12].version == "013"
+    assert migrations[12].name == "diagnostics_runs"
+    assert "CREATE TABLE IF NOT EXISTS diagnostics_runs" in migrations[12].sql
 
 
 def test_upgrade_applies_pending_sql_migrations(tmp_path) -> None:

@@ -355,6 +355,19 @@ product_analytics_events = Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
 )
 
+diagnostics_runs = Table(
+    "diagnostics_runs",
+    metadata,
+    Column("universe_id", Text, ForeignKey("universes.id"), primary_key=True),
+    Column("kind", Text, primary_key=True),
+    Column("seed", Integer, nullable=False),
+    Column("ticks", BigInteger, nullable=False),
+    Column("verdict", Text, nullable=False),
+    Column("duration_ms", Numeric(10, 3), nullable=False),
+    Column("payload", JSON, nullable=False, default=dict),
+    Column("measured_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+)
+
 worker_heartbeats = Table(
     "worker_heartbeats",
     metadata,

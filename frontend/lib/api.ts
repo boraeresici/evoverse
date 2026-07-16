@@ -2,6 +2,7 @@ import type {
   AdminRulesData,
   ChronicleData,
   DynamicReportData,
+  DiagnosticsData,
   DynamicReportScope,
   IdentityContextData,
   LandingData,
@@ -227,6 +228,14 @@ export async function getDynamicReport({
       params.set("speciesId", speciesId);
     }
     return await request<DynamicReportData>(`/universes/alpha/reports/dynamic?${params}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getDiagnostics(): Promise<DiagnosticsData | null> {
+  try {
+    return await request<DiagnosticsData>("/universes/alpha/diagnostics");
   } catch {
     return null;
   }
