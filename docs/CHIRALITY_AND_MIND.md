@@ -415,6 +415,95 @@ be wrong about the world. Same bifurcation as §6.1, one tier up.
 
 ---
 
+### 6.6 The T1 phase diagram — *measured*
+
+The three T1 knobs are not independent settings; they lay out a plane with four
+phases in it. **`make phase`** (see [`sweep.py`](../backend/app/simulation/sweep.py))
+renders it from a live ensemble — 8 seeds × 600 ticks per cell, on the base 12×9
+world. The same diagram comes back at 6 seeds × 500 ticks, so it is not an artifact
+of the ensemble size:
+
+```
+        lambda |  0.0000  0.0010  0.0020  0.0050  0.0100   <- beta
+       ------------------------------------------------
+         0.000 |     xxx     xxx     x?      ###     ###
+         0.008 |     xxx     x?      ###     ###     ###
+         0.016 |     ···     ···     ···     ###     ###
+         0.020 |     ···     ···     ···     ~~~     ###
+         0.030 |     ···     ···     ···     ···     ~~~
+         0.060 |     ···     ···     ···     ···     ···
+
+  ···  racemic — no hand ever forms
+  ~~~  hollow — era granted, nothing latched
+  xxx  chiral glass — latched, but into opposing domains
+  ###  homochiral — one hand across the whole map
+  x?   ensemble split — a boundary cell, not a verdict
+```
+
+Read it along the two axes:
+
+- **Down (racemization $\lambda$):** the vertical order is `homochiral → hollow →
+  racemic`. Past $\lambda=0.06=k$ the control parameter $\mu=k-\lambda$ is
+  non-positive and racemic is stable, so nothing happens at any field strength —
+  the bottom row is flat. The **hollow** band above it is the narrow, dangerous
+  one (§6.1): the mean clears the life gate while no region latches.
+- **Right (field $\beta$):** the horizontal order is `glass → homochiral`. Both
+  are *locked* — the difference is whether the map agreed. This axis is the whole
+  argument: without a field the cubic amplifies whatever local noise chose, and
+  the map freezes into domains.
+
+The default $(\beta, \lambda) = (0.005, 0.008)$ sits inside `###` with margin on
+every side, which is the point of choosing it a stride past each transition rather
+than on one.
+
+#### Finite-size scaling: without a field, homochirality is a finite-size artifact
+
+This is the result worth having, and it is the strongest form of Öztürk's argument
+this model can state. Run the field off and grow the world (6–8 seeds, 500 ticks):
+
+| regions $N$ | domains | $N$ / domain | $H = \lvert\text{mean } \mathit{ee}\rvert$ |
+| --- | --- | --- | --- |
+| 108 (12×9) | 4.4 | 24.7 | **0.214** |
+| 192 (16×12) | 5.5 | 34.9 | 0.172 |
+| 300 (20×15) | 7.6 | 39.3 | 0.144 |
+| 432 (24×18) | 11.8 | 36.8 | **0.154** |
+
+Domain **count** grows with area while domain **size** converges to ≈36 regions —
+a characteristic scale set by the physics (amplification racing the avalanche),
+not by the world. So a larger world does not become more homochiral; it becomes
+**less**, because it fragments into more domains that cancel more completely. With
+$n$ roughly independent $\pm1$ domains, $H$ falls like $1/\sqrt{n}$, and $n$ grows
+with $N$ — so
+
+$$\lim_{N\to\infty} H\big|_{\beta=0} = 0$$
+
+**Local symmetry breaking does not survive the thermodynamic limit.** On a
+planet-sized world, amplification alone cannot make life single-handed; the domains
+cancel and the global excess goes to zero. A global field is not a refinement on
+the mechanism — it is the only part of it that survives scale. That is exactly the
+gap the magnetized surface exists to close, and here it is as a measurement rather
+than an assertion.
+
+#### An honest negative: $\beta_c$ does not scale
+
+The obvious companion hypothesis was that a bigger world needs a stronger field —
+more nucleation sites, more domains to overrule. It is **not supported**. Locating
+$\beta_c$ where the single-domain fraction crosses ½:
+
+| world | 12×9 | 16×12 | 20×15 | 24×18 |
+| --- | --- | --- | --- | --- |
+| $\beta_c$ | 0.00117 | 0.00130 | 0.00100 | 0.00133 |
+
+No trend; the scatter is the grid resolution and 6-seed noise. The reading is that
+the field-versus-noise contest is settled **per region, independently** — each
+region falls to whichever is larger, and the avalanche only propagates the winner.
+Size changes how many domains you get, not the field it takes to prevent them.
+
+Both results point the same way. Scale does not change the threshold; it changes
+what happens when you are under it, and it makes being under it worse without limit.
+
+---
+
 ## 7. Catalyst & events
 
 - **New catalyst action `CHIRAL_PULSE`** (`CatalystActionType`): the observer's

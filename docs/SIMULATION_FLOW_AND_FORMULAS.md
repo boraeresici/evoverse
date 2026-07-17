@@ -256,6 +256,14 @@ from the rules screen.
 
 Reproduce with `make sweep` (`--param racemization_rate`).
 
+**The $(\beta,\lambda)$ plane has four phases**, and $\lambda$ and $\beta$ fail in
+different directions: $\lambda$ decides whether a hand forms at all
+(`homochiral → hollow → racemic` going down), $\beta$ decides whether the map
+agrees on it (`glass → homochiral` going right). `make phase` renders the diagram
+live; the finite-size result — that without a field homochirality vanishes as the
+world grows, so only the field survives the limit — is in
+[`CHIRALITY_AND_MIND.md` §6.6](./CHIRALITY_AND_MIND.md).
+
 Without $\beta B$ the cubic term amplifies whichever way each region's *local*
 noise happened to push, and the map freezes into opposing domains: every region
 locked, none agreeing. The field is what makes the outcome *homochiral* rather

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from dataclasses import replace
 from typing import Any
 
@@ -174,6 +175,138 @@ def _aggregate_runs(value: float, runs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+PHASES = {
+    # key -> (glyph, label). The glyph is what the ASCII diagram prints.
+    "racemic": ("·", "racemic — no hand ever forms"),
+    "hollow": ("~", "hollow — era granted, nothing latched"),
+    "glass": ("x", "chiral glass — latched, but into opposing domains"),
+    "homochiral": ("#", "homochiral — one hand across the whole map"),
+}
+
+
+def _classify(run: dict[str, Any], life_gate: float) -> str:
+    """Which of the four T1 phases a universe landed in.
+
+    The two failure modes are distinct and easy to conflate. `racemic` never
+    breaks symmetry at all. `hollow` breaks it enough for the universe *mean* to
+    clear the life gate while no region ever latches — so the era is granted and
+    no lineage ever adopts a hand (see ChiralityRules.racemization_rate).
+    """
+    if run["locked_regions"] == 0:
+        return "hollow" if run["homochirality_index"] >= life_gate else "racemic"
+    return "homochiral" if run["domain_count"] == 1 else "glass"
+
+
+def run_phase_diagram(
+    *,
+    field_values: list[float] | None = None,
+    racemization_values: list[float] | None = None,
+    seed: int = 4211,
+    seeds: int = 6,
+    ticks: int = 500,
+    width: int = 12,
+    height: int = 9,
+) -> dict[str, Any]:
+    """The (field_strength, racemization_rate) plane, one cell per pair.
+
+    A cell is the phase a majority of the ensemble landed in, plus the fraction
+    that agreed — cells near a boundary disagree, which is the honest rendering of
+    a transition. See docs/CHIRALITY_AND_MIND.md §6.6.
+    """
+    if field_values is None:
+        field_values = [0.0, 0.001, 0.002, 0.005, 0.01]
+    if racemization_values is None:
+        racemization_values = [0.0, 0.008, 0.016, 0.02, 0.03, 0.06]
+    life_gate = DEFAULT_SIMULATION_RULES.chirality.life_gate_index
+    ensemble = [seed + offset for offset in range(max(1, seeds))]
+
+    cells: list[dict[str, Any]] = []
+    for lam in racemization_values:
+        for beta in field_values:
+            tally: Counter[str] = Counter()
+            for member in ensemble:
+                run = _run_single_chirality(
+                    field_strength=beta,
+                    racemization_rate=lam,
+                    seed=member,
+                    ticks=ticks,
+                    width=width,
+                    height=height,
+                )
+                tally[_classify(run, life_gate)] += 1
+            phase, agreed = tally.most_common(1)[0]
+            cells.append(
+                {
+                    "fieldStrength": beta,
+                    "racemizationRate": lam,
+                    "phase": phase,
+                    "agreement": round(agreed / len(ensemble), 4),
+                    "tally": dict(tally),
+                }
+            )
+    return {
+        "fieldValues": field_values,
+        "racemizationValues": racemization_values,
+        "seeds": ensemble,
+        "ticks": ticks,
+        "world": {"width": width, "height": height, "regions": width * height},
+        "cells": cells,
+    }
+
+
+def _run_single_chirality(
+    *,
+    field_strength: float,
+    racemization_rate: float,
+    seed: int,
+    ticks: int,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    rules = replace(
+        DEFAULT_SIMULATION_RULES,
+        chirality=replace(
+            DEFAULT_SIMULATION_RULES.chirality,
+            field_strength=field_strength,
+            racemization_rate=racemization_rate,
+        ),
+    )
+    state = seed_alpha(seed=seed, width=width, height=height)
+    SimulationEngine(seed=seed, rules=rules).advance(state, ticks=ticks)
+    return {
+        "homochirality_index": state.universe.homochirality_index,
+        "domain_count": state.universe.domain_count,
+        "locked_regions": sum(
+            1 for region in state.regions.values() if region.chirality_locked
+        ),
+    }
+
+
+def _print_phase_diagram(result: dict[str, Any]) -> None:
+    world = result["world"]
+    print("Evoverse Chirality Phase Diagram (T1)")
+    print(f"World: {world['width']}x{world['height']} = {world['regions']} regions")
+    print(f"Ensemble: {len(result['seeds'])} seeds x {result['ticks']} ticks")
+    print()
+    by_pair = {
+        (cell["fieldStrength"], cell["racemizationRate"]): cell for cell in result["cells"]
+    }
+    print("        lambda |" + "".join(f"{b:>8.4f}" for b in result["fieldValues"]) + "   <- beta")
+    print("       " + "-" * (8 + 8 * len(result["fieldValues"])))
+    for lam in result["racemizationValues"]:
+        row = ""
+        for beta in result["fieldValues"]:
+            cell = by_pair[(beta, lam)]
+            glyph = PHASES[cell["phase"]][0]
+            # Lower-case the glyph where the ensemble split — a boundary, not a fact.
+            row += f"{glyph * 3 if cell['agreement'] > 0.83 else glyph + '? '}".rjust(8)
+        print(f"{lam:>14.3f} |{row}")
+    print()
+    for key, (glyph, label) in PHASES.items():
+        print(f"  {glyph * 3}  {label}")
+    print("  x?   ensemble split — a boundary cell, not a verdict")
+
+
 def _print_human_report(sweep_result: dict[str, Any]) -> None:
     """Print a human-readable sweep report."""
     print("Evoverse Chirality Sweep")
@@ -253,12 +386,46 @@ def main() -> None:
         help="Ticks per run (default: 600).",
     )
     parser.add_argument(
+        "--phase",
+        action="store_true",
+        help=(
+            "Sweep the (field_strength, racemization_rate) plane instead of one "
+            "parameter, and print the T1 phase diagram. Ignores --param/--values."
+        ),
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=12,
+        help="World width for --phase (default 12). Below 12x9 the seeder cannot place species.",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=9,
+        help="World height for --phase (default 9).",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON.",
     )
 
     args = parser.parse_args()
+
+    if args.phase:
+        result = run_phase_diagram(
+            seed=args.seed,
+            seeds=args.seeds,
+            ticks=args.ticks,
+            width=args.width,
+            height=args.height,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            _print_phase_diagram(result)
+        return
 
     result = run_sweep(
         param=args.param,
