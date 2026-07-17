@@ -403,11 +403,15 @@ function buildReportBridge(report: DynamicReportData | null) {
 }
 
 function formatDelta(value: number, format: string) {
-  const sign = value > 0 ? "+" : "";
-  if (format === "percent") {
-    return `${sign}${Math.round(value * 100)}pp`;
-  }
-  return `${sign}${Math.round(value).toLocaleString()}`;
+  // This row is a drift (baseline→current change), not an absolute reading, so
+  // the value must always read as a delta. A bare "0" loses that — "Population 0"
+  // then looks like the headcount and contradicts the header — so a zero change
+  // shows "±0". Sign is taken from the rounded magnitude, not the raw value, so a
+  // sub-unit change that rounds to nothing never renders a misleading "+0".
+  const magnitude = format === "percent" ? Math.round(value * 100) : Math.round(value);
+  const sign = magnitude > 0 ? "+" : magnitude < 0 ? "-" : "±";
+  const body = Math.abs(magnitude).toLocaleString();
+  return format === "percent" ? `${sign}${body}pp` : `${sign}${body}`;
 }
 
 function drawMicroLifeFrame({
