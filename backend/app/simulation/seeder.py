@@ -156,6 +156,8 @@ def _seed_regions(seed: int, universe_id: str, width: int, height: int) -> dict[
                 energy_level=round(energy, 3),
                 resource_density=round(resources, 3),
                 stability=round(stability, 3),
+                # Genesis is what the chronicle knows; shifts are measured from here.
+                last_reported_resource_density=round(resources, 3),
                 chirality_ee=round(chirality_ee, 4),
             )
     return regions
@@ -215,6 +217,7 @@ def _seed_species_and_populations(state: AlphaState) -> None:
                 growth_rate=0.0,
                 migration_pressure=0.0,
                 last_updated_tick=state.universe.tick,
+                decline_reference_population=count,
             )
 
 

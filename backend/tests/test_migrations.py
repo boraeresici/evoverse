@@ -14,7 +14,7 @@ from app.persistence.migrations import (
 def test_discovers_initial_sql_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 14
+    assert len(migrations) == 15
     assert migrations[0].version == "001"
     assert migrations[0].name == "initial_schema"
     assert len(migrations[0].checksum) == 64
@@ -58,6 +58,9 @@ def test_discovers_initial_sql_migration() -> None:
     assert migrations[13].version == "014"
     assert migrations[13].name == "local_order_and_domain_count"
     assert "ADD COLUMN IF NOT EXISTS local_order_index" in migrations[13].sql
+    assert migrations[14].version == "015"
+    assert migrations[14].name == "resource_report_and_decline_reference"
+    assert "ADD COLUMN IF NOT EXISTS last_reported_resource_density" in migrations[14].sql
 
 
 def test_upgrade_applies_pending_sql_migrations(tmp_path) -> None:

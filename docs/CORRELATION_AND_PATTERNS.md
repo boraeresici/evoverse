@@ -93,7 +93,7 @@ Candidate fields, in preference order (why):
 |-------|--------|------|
 | `stability` | `region.stability` | continuous, never saturates — **best default** |
 | `energy_level` | `region.energy_level` | continuous, catalyst-perturbed |
-| `resource_density` | `region.resource_density` | continuous, has forced shocks |
+| `resource_density` | `region.resource_density` | continuous; **the only field life feeds back into** — populations draw it down, so it carries the ecology rather than just noise. The 13-tick scripted shock that used to punch it is gone |
 | `growth_rate` | mean of region's populations' `growth_rate` | the closest analogue to a *velocity* (rate of change) |
 | `chirality_ee` | `region.chirality_ee` | **saturates to ±1** once locked → poor for ξ in the ordered phase; useful only *during* symmetry breaking |
 

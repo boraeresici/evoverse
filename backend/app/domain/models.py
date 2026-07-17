@@ -103,6 +103,12 @@ class Region:
     stability: float
     dominant_species_id: str | None = None
     collapsed: bool = False
+    # The resource level the chronicle last told anyone about. A resource shift is
+    # a move away from *this*, not from last tick: the world drifts ~0.02/tick and
+    # a real shift takes ~50 ticks to build, so a per-tick comparison could never
+    # see one. Reporting resets it, which is what keeps a slow slide from becoming
+    # a flood of events. See docs/SIMULATION_FLOW_AND_FORMULAS.md §3.
+    last_reported_resource_density: float = 0.0
     # Local handedness (T1): drifts through a bifurcation, then avalanches to
     # neighbours and latches. See docs/CHIRALITY_AND_MIND.md.
     chirality_ee: float = 0.0
@@ -170,6 +176,12 @@ class Population:
     growth_rate: float
     migration_pressure: float
     last_updated_tick: int
+    # The level a decline is measured down from: a high-water mark that rises with
+    # the population and resets whenever a decline is reported. Growth here is
+    # ~+0.6%/tick and the worst single tick loses ~11%, so "lost a fifth since last
+    # tick" describes nothing this world can do; "lost a fifth since its peak" is a
+    # story it tells constantly. Same threshold, honest resolution.
+    decline_reference_population: int = 0
 
 
 @dataclass(slots=True)

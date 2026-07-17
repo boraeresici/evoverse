@@ -26,6 +26,8 @@ one **species** in that region). Symbols used throughout:
 | $S$ | region stability | $[0,1]$ | `Region.stability` |
 | $\mathit{ee}$ | region enantiomeric excess (signed handedness) | $[-1,1]$ | `Region.chirality_ee` |
 | $N$ | population count of a species in a region | $\ge 0$ | `Population.population_count` |
+| $R_{\text{reported}}$ | resource level the chronicle last reported for a region | $[0,1]$ | `Region.last_reported_resource_density` |
+| $N_{\text{ref}}$ | a lineage's high-water mark, the level a decline is measured down from | $\ge 0$ | `Population.decline_reference_population` |
 | $g$ | per-tick growth rate | — | `Population.growth_rate` |
 | $c_s$ | species handedness | $\{-1,0,+1\}$ | `Species.chirality` |
 | $H$ | universe homochirality index — *global* single-handedness, $\lvert\text{mean }\mathit{ee}\rvert$ | $[0,1]$ | `Universe.homochirality_index` |
@@ -55,7 +57,7 @@ flowchart TD
     A[tick += 1<br/>age_years += 1] --> B[_advance_regions<br/>§3 — E, R, S drift · collapse/recover]
     B --> C[_advance_chirality<br/>§4 — ee bifurcation · avalanche · lineage adopt]
     C --> D[_advance_populations<br/>§5 — habitat fit · growth · migration]
-    D --> E[_maybe_emit_forced_chronicle_events<br/>§8 — scheduled narrative beats]
+    D --> E[_maybe_emit_scripted_collapse<br/>§8 — the one scripted beat left]
     E --> F[_maybe_speciate<br/>§6 — mutation → child species]
     F --> G[_update_species_statuses<br/>§7 — extinct/dominant/declining/…]
     G --> H[_recalculate_dominant_species<br/>per-region argmax N]
@@ -140,34 +142,43 @@ $$\text{collapse} \iff \neg\text{collapsed}\ \wedge\ S<\text{collapseStabilityTh
 
 $$\text{recover} \iff \text{collapsed}\ \wedge\ S\ge\text{rec}_S\ \wedge\ R\ge\text{rec}_R\ \wedge\ E\ge\text{rec}_E$$
 
-A resource move of $\ge\text{resourceShiftThreshold}$ in one tick emits a
-`REGION_RESOURCE_SHIFT`; a fresh collapse emits `REGION_COLLAPSE`.
+**Reporting a shift.** A `REGION_RESOURCE_SHIFT` fires when $R$ has moved
+$\ge\text{resourceShiftThreshold}$ **since the chronicle last reported this region**
+— not since last tick — after which the reference resets to the reported value:
+
+$$\big|R - R_{\text{reported}}\big| \ge \text{resourceShiftThreshold}
+\ \Longrightarrow\ \text{emit},\ R_{\text{reported}} \leftarrow R$$
+
+The reference is `Region.last_reported_resource_density`, seeded at genesis to the
+region's starting resource. The per-tick comparison this replaces could never fire:
+one tick moves $R$ by at most $\approx0.057$ against a $0.16$ threshold, so the rule
+was dead and §8's 13-tick script was the only resource shift Alpha had. The reset is
+what keeps the honest reading from flooding — a region grinding downward is told once
+per threshold-worth of movement rather than every tick it keeps sliding.
+
+A fresh collapse emits `REGION_COLLAPSE`.
 
 **Constants** ([`RegionRules`](../backend/app/simulation/rules.py#L22)):
 $\bar E=0.56,\ \bar R=0.52,\ \bar S=0.58$; reversion $k_E=0.018,\ k_R=0.02,\ k_S=0.026$;
 collapse $S<0.16 \wedge R<0.18$; recovery $S\ge0.34, R\ge0.32, E\ge0.3$;
 consumptionPressureScale $=400{,}000$.
 
-> **The collapse band is not reachable by drift, and that is why §8 exists.**
-> Over 10,000 ticks on the base seed, **not one** region collapses on its own,
-> **not one** resource shift fires organically, and **not one** species declines
-> organically — 0, not "rare". The thresholds sit outside what the dynamics can
-> produce: `resourceShiftThreshold` asks for a $0.16$ move in one tick when the
-> largest possible is $\approx0.05$ (walk $\pm0.04$ plus reversion $\pm0.01$),
-> and collapse needs $S<0.16$ when $S$'s equilibrium is $0.58$ and the only term
-> that could pull it down — the resource-pressure term below — is clamped by
-> `resourceStabilityBonusCap` $=0.02$ to a contribution of $0.00036$/tick, giving
-> $S^\ast=0.566$ for a region with *no resources at all*.
+> **The collapse band is not reachable by drift.** Over 10,000 ticks on the base
+> seed, **not one** region collapses on its own. $S$'s equilibrium is $0.58$ and the
+> only term that could pull it down — the resource-pressure term above — is clamped
+> by `resourceStabilityBonusCap` $=0.02$ to a contribution of $0.00036$/tick, giving
+> $S^\ast=0.566$ for a region with *no resources at all*. So every collapse in the
+> chronicle is §8's scripted one, and it is labelled `synthetic: true` for exactly
+> that reason.
 >
-> So 91% of the chronicle is the scripted §8 beats, and the ecological rules that
-> were meant to generate drama are decorative. The consumer–resource draw above is
-> the first half of the fix (the world can now be depleted); making depletion
-> *destabilise* a region is the second, and it needs its own calibration pass —
-> measured, the coupling that produces organic collapse also kills the world,
-> because collapse costs $-0.09$ growth against a median growth of $+0.006$ and
-> a median habitat fit only $+0.044$ above the growth baseline. See `sira.md`.
-
----
+> This is the last scripted beat. The other two — resource shift and species decline
+> — looked like the same problem and were not: their thresholds were *reachable*, and
+> only the resolution was wrong (§3 above, §5). Fixing that deleted them. Collapse is
+> genuinely unreachable, and closing it needs the depletion→destabilisation coupling,
+> which is measured to cost more than the ecology can pay: collapse charges $-0.09$
+> growth against a median growth of $+0.006$, on a world whose median habitat fit sits
+> only $+0.044$ above the growth baseline, so every setting that produces organic
+> collapse also halves the population and the species count. See `sira.md` 23.6d.
 
 ## 4. Chirality — `_advance_chirality` (T1)
 
@@ -305,8 +316,21 @@ If $N>\text{migrationMinPopulation}$ and $\pi>\text{migrationPressureThreshold}$
 a fraction $\text{migrationFraction}$ moves to the best adjacent non-collapsed
 region (argmax of $E+R+S$) — see `_migrate_population`.
 
-A drop below $\text{declinePopulationRatio}$ of the previous count (when previously
-$>\text{declineMinPreviousPopulation}$) emits `SPECIES_DECLINED`.
+**Reporting a decline.** `SPECIES_DECLINED` fires when a count falls below
+$\text{declinePopulationRatio}$ of `Population.decline_reference_population` — the
+lineage's **high-water mark**, which rises with the population and resets to the
+floor whenever a decline is reported:
+
+$$N > N_{\text{ref}} \Longrightarrow N_{\text{ref}} \leftarrow N \qquad\text{else}\qquad
+N < N_{\text{ref}}\cdot\text{declinePopulationRatio}
+\ \Longrightarrow\ \text{emit},\ N_{\text{ref}} \leftarrow N$$
+
+(gated on $N_{\text{ref}}>\text{declineMinPreviousPopulation}$, so noise in tiny
+populations is not news.) Measured against the *previous tick* — what this replaces —
+the rule asked for a 28% single-tick crash from a world whose worst tick loses ~11%
+and whose typical one gains 0.6%. It fired zero times in 10,000 ticks; every decline
+in the chronicle came from §8's 17-tick script, which announced 14% and changed
+nothing. Same threshold, honest resolution: ~1,120 real declines per 10,000 ticks.
 
 **Species-level load.** Mismatch is aggregated population-weighted across all a
 lineage's regions into `Species.heterochiral_load`:
@@ -415,13 +439,34 @@ is currently unreachable by design — see [§6.4](./CHIRALITY_AND_MIND.md).
 
 ---
 
-## 8. Forced chronicle events — `_maybe_emit_forced_chronicle_events`
+## 8. The one scripted beat — `_maybe_emit_scripted_collapse`
 
-Deterministic narrative beats on fixed cadences so an observed universe never goes
-silent for long ([engine.py:383](../backend/app/simulation/engine.py#L383)). These
-run on `tick mod interval` schedules independent of the organic rules above:
-resource shift every $13$ ticks (rise on multiples of $26$, else fall), a nudged
-decline every $17$, a forced collapse every $151$. Constants:
+There used to be three: a resource shift every $13$ ticks, a species decline every
+$17$, a collapse every $151$. Together they wrote **91% of the chronicle** (1,423 of
+1,571 events per 10,000 ticks), and the reason was not that Alpha is quiet. The
+organic rules they stood in for **fired zero times** — their thresholds describe
+trends and were compared against the previous tick (§3, §5), which no world drifting
+$0.02$/tick can satisfy.
+
+Reading the same thresholds against the **last reported value** (§3) fixed the
+resolution rather than the number, and the world turned out to be loud: **2,579 real
+resource shifts and 1,120 real declines per 10,000 ticks**, against the 951 and 588
+the script was manufacturing. Both beats are deleted. The 17-tick one is the least
+missed: it announced a 14% decline and never touched the population — 588 lies per
+run, 61 of them about species that were already extinct and 257 about species that
+*grew* that tick.
+
+**Collapse remains**, alone, because nothing collapses on its own yet: stability does
+not answer to depletion, and the coupling that would make it answer costs more than
+the ecology can pay (measured — see `sira.md` 23.6d). The event is true (the region
+really does collapse) but its *cause* is a clock, so its payload carries
+`synthetic: true`. Analysis over the chronicle — including
+[`CORRELATION_AND_PATTERNS.md`](./CORRELATION_AND_PATTERNS.md) — can exclude it
+rather than rediscover the number 151 and report it as a finding.
+
+The chronicle is now **3,911 events per 10,000 ticks, 98.3% of them organic** — 2.5×
+denser than when it was mostly scripted. Honesty cost visibility nothing; the script
+was covering for a blindfold, not for silence. Constant:
 [`ChronicleRules`](../backend/app/simulation/rules.py#L93).
 
 ---

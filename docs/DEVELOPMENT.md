@@ -156,7 +156,7 @@ These were not free parameters left to chance. They were **tuned against a defau
 10,000-tick benchmark**: without equilibrium reversion and collapse recovery, long
 runs tended to collapse every region; without calming speciation and growth rates,
 species generation ran away after recovery. A representative benchmark run settles
-around 2 of 108 regions collapsed, roughly 73 species, and on the order of 73,000
+around 2 of 108 regions collapsed, roughly 73 species, and on the order of 74,000
 total population — a world that is neither dead nor exploding, which is exactly the
 regime a persistent observatory needs.
 

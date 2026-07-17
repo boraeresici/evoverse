@@ -142,6 +142,82 @@ def test_consumption_bounds_population_instead_of_letting_it_run() -> None:
     assert mean_resource < unbounded_mean  # the world is visibly grazed
 
 
+def test_the_chronicle_is_its_own_world_not_a_metronome() -> None:
+    """91% of the chronicle used to be three scripted beats — a resource shift
+    every 13 ticks, a decline every 17, a collapse every 151 — because the organic
+    rules they covered for fired *zero* times in 10,000 ticks. Their thresholds
+    described trends but were compared against the previous tick, which no world
+    this slow can satisfy. Now the same thresholds are read against the last
+    reported value, and Alpha files its own news."""
+    state = seed_alpha(seed=4211)
+    SimulationEngine(seed=4211).advance(state, ticks=2000)
+    counts = Counter(event.event_type for event in state.events)
+
+    assert counts[EventType.REGION_RESOURCE_SHIFT] > 100
+    assert counts[EventType.SPECIES_DECLINED] > 100
+    # The scripted collapse is the only beat left, and it says so.
+    scripted = [e for e in state.events if e.payload.get("synthetic")]
+    assert all(e.event_type == EventType.REGION_COLLAPSE for e in scripted)
+    organic = [e for e in state.events if not e.payload.get("synthetic")]
+    assert len(organic) > 20 * len(scripted)  # the world out-talks the clock
+
+
+def test_a_reported_decline_is_one_the_population_actually_took() -> None:
+    """The 17-tick beat announced that a species had lost 14% of its population
+    and then did not touch the population — 588 times per 10,000 ticks, including
+    61 about species that were already extinct and 257 about species that *grew*
+    that tick. Every decline in the chronicle now has to have happened."""
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    seen: set[str] = set()
+    for _ in range(600):
+        before = {key: p.population_count for key, p in state.populations.items()}
+        engine.advance(state, ticks=1)
+        for event in state.events:
+            if event.event_type != EventType.SPECIES_DECLINED or event.id in seen:
+                continue
+            seen.add(event.id)
+            counts = [
+                (before.get(key, 0), p.population_count)
+                for key, p in state.populations.items()
+                if p.species_id == event.species_id and p.region_id == event.region_id
+            ]
+            assert counts, "a decline was reported for a population that is not there"
+            was, now = counts[0]
+            assert now < was, f"{event.species_id} was reported declining while at {was}->{now}"
+
+    assert seen, "expected the world to report declines of its own"
+
+
+def test_a_slow_slide_is_reported_once_not_every_tick() -> None:
+    """The reference resets on report, so a region grinding downward is told once
+    per threshold-worth of movement. Without that reset, reporting against
+    anything but the previous tick would flood the chronicle — 16,411 shifts per
+    10,000 ticks at the old 0.16."""
+    state = seed_alpha(seed=4211)
+    region = state.regions["region-001"]
+    threshold = DEFAULT_SIMULATION_RULES.region.resource_shift_threshold
+    region.resource_density = 0.9
+    region.last_reported_resource_density = 0.9
+
+    engine = SimulationEngine(seed=4211)
+    engine.advance(state, ticks=1)
+    shifts = lambda: [  # noqa: E731
+        e
+        for e in state.events
+        if e.event_type == EventType.REGION_RESOURCE_SHIFT and e.region_id == "region-001"
+    ]
+    assert not shifts()  # one tick cannot move it a threshold's worth
+
+    region.resource_density = round(0.9 - threshold, 3)
+    engine.advance(state, ticks=1)
+    assert len(shifts()) == 1
+    # The report moved the reference down with it: sitting there is not news again.
+    assert region.last_reported_resource_density == region.resource_density
+    engine.advance(state, ticks=5)
+    assert len(shifts()) == 1
+
+
 def test_simulation_is_deterministic_for_same_seed() -> None:
     first = seed_alpha(seed=4211)
     second = seed_alpha(seed=4211)

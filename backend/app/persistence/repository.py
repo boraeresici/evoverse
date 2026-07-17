@@ -191,6 +191,7 @@ class AlphaStateRepository:
                     stability=float(row["stability"]),
                     dominant_species_id=row["dominant_species_id"],
                     collapsed=bool(row["collapsed"]),
+                    last_reported_resource_density=float(row["last_reported_resource_density"]),
                     chirality_ee=float(row["chirality_ee"]),
                     chirality_locked=bool(row["chirality_locked"]),
                 )
@@ -221,6 +222,7 @@ class AlphaStateRepository:
                     growth_rate=float(row["growth_rate"]),
                     migration_pressure=float(row["migration_pressure"]),
                     last_updated_tick=int(row["last_updated_tick"]),
+                    decline_reference_population=int(row["decline_reference_population"]),
                 )
                 for row in population_rows
             },
@@ -388,6 +390,7 @@ class AlphaStateRepository:
                         "stability": region.stability,
                         "dominant_species_id": region.dominant_species_id,
                         "collapsed": region.collapsed,
+                        "last_reported_resource_density": region.last_reported_resource_density,
                         "chirality_ee": region.chirality_ee,
                         "chirality_locked": region.chirality_locked,
                     },
@@ -423,6 +426,7 @@ class AlphaStateRepository:
                             "growth_rate": population.growth_rate,
                             "migration_pressure": population.migration_pressure,
                             "last_updated_tick": population.last_updated_tick,
+                            "decline_reference_population": population.decline_reference_population,
                         }
                         for population in state.populations.values()
                     ],

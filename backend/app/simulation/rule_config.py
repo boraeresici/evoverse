@@ -279,10 +279,6 @@ def _validate_semantics(
         errors.append(_error("region.recoveryStabilityThreshold", "Recovery stability must be above collapse stability."))
     if rules.region.recovery_resource_threshold <= rules.region.collapse_resource_threshold:
         errors.append(_error("region.recoveryResourceThreshold", "Recovery resource must be above collapse resource."))
-    if rules.region.forced_resource_rise_delta <= 0:
-        errors.append(_error("region.forcedResourceRiseDelta", "Forced resource rise delta must be positive."))
-    if rules.region.forced_resource_fall_delta >= 0:
-        errors.append(_error("region.forcedResourceFallDelta", "Forced resource fall delta must be negative."))
     if rules.region.forced_collapse_stability > rules.region.collapse_stability_threshold:
         warnings.append(_warning("region.forcedCollapseStability", "Forced collapse stability is above the collapse threshold."))
     if rules.region.forced_collapse_resource > rules.region.collapse_resource_threshold:

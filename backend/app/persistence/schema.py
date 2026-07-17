@@ -60,6 +60,7 @@ regions = Table(
     Column("collapsed", Boolean, nullable=False, default=False),
     Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
     Column("chirality_locked", Boolean, nullable=False, default=False),
+    Column("last_reported_resource_density", Numeric(6, 3), nullable=False, default=0),
 )
 
 species = Table(
@@ -88,6 +89,7 @@ populations = Table(
     Column("growth_rate", Numeric(8, 4), nullable=False),
     Column("migration_pressure", Numeric(8, 4), nullable=False),
     Column("last_updated_tick", BigInteger, nullable=False),
+    Column("decline_reference_population", Integer, nullable=False, default=0),
 )
 
 events = Table(

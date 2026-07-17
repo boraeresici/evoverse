@@ -57,7 +57,23 @@ class RegionRules:
     collapsed_stability_penalty: float = 0.006
     collapsed_energy_penalty: float = 0.004
     mutation_stability_penalty_factor: float = 0.08
-    resource_shift_threshold: float = 0.16
+    # How far a region's resource must move *since the chronicle last reported it*
+    # to be worth reporting again. This is a reporting threshold — it does not
+    # touch the dynamics, only what gets told.
+    #
+    # It used to be 0.16 measured against the previous tick, which no region could
+    # ever reach: a single tick moves at most ~0.057 (walk +/-0.04, reversion, draw),
+    # so the rule fired exactly zero times in 10,000 ticks and the 13-tick scripted
+    # shift was the only "resource shift" Alpha ever had. The value was never the
+    # problem — 0.16 is the 90th percentile of a 25-tick window, i.e. someone chose
+    # it for a trend and wired it to a tick. Measured against the last report the
+    # world turns out to be full of real movement: 16,411 shifts of >=0.16 per
+    # 10,000 ticks, 21x the scripted rate it was covering for.
+    #
+    # 0.32 is roughly 0.52 -> 0.20, normal to scarce: unambiguous, not noise. It
+    # yields ~2,650 per 10,000 ticks, about 25 per region — a notable resource event
+    # every ~400 years of Alpha Age.
+    resource_shift_threshold: float = 0.32
     collapse_stability_threshold: float = 0.16
     collapse_resource_threshold: float = 0.18
     recovery_stability_threshold: float = 0.34
@@ -65,8 +81,6 @@ class RegionRules:
     recovery_energy_threshold: float = 0.3
     forced_collapse_stability: float = 0.12
     forced_collapse_resource: float = 0.13
-    forced_resource_rise_delta: float = 0.18
-    forced_resource_fall_delta: float = -0.19
 
 
 @dataclass(frozen=True)
@@ -80,7 +94,15 @@ class PopulationRules:
     migration_baseline: float = 0.42
     migration_trait_factor: float = 0.2
     decline_min_previous_population: int = 500
-    decline_population_ratio: float = 0.72
+    # Fraction of `decline_reference_population` a count must fall under to be
+    # reported as a decline. Reporting only — the dynamics do not read it.
+    #
+    # It used to be 0.72 against the *previous tick*: a 28% single-tick crash, when
+    # the worst tick this world can produce loses ~11% and the realistic floor is
+    # ~1%. It fired zero times in 10,000 ticks. Measured against the lineage's peak
+    # instead, 0.60 — down 40% from its high-water mark — is a genuine collapse and
+    # fires ~1,095 times per 10,000 ticks.
+    decline_population_ratio: float = 0.60
     severe_decline_percent: int = 40
     migration_min_population: int = 1400
     migration_pressure_threshold: float = 0.48
@@ -110,10 +132,19 @@ class SpeciationRules:
 
 @dataclass(frozen=True)
 class ChronicleRules:
-    forced_resource_shift_interval: int = 13
-    forced_resource_rise_interval: int = 26
-    forced_decline_interval: int = 17
-    forced_decline_percent: int = 14
+    """The scripted beats. Only one is left.
+
+    A 13-tick resource shift and a 17-tick species decline used to live here too,
+    and between them they wrote 91% of the chronicle — not because the world is
+    quiet, but because the organic rules they stood in for had thresholds written
+    for trends and wired to single ticks, so those rules fired zero times. With the
+    resolution fixed the world reports 2,424 real shifts and 1,095 real declines per
+    10,000 ticks on its own, and both beats were deleted. See `resource_shift_threshold`.
+
+    Collapse survives only because nothing collapses on its own yet. It emits
+    `synthetic: true` so the chronicle does not pass a clock off as an ecology.
+    """
+
     forced_collapse_interval: int = 151
 
 
