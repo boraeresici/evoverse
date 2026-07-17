@@ -1,6 +1,6 @@
 import type { ChronicleEvent, RegionDetail } from "./types";
 
-export type MicroLifeMode = "life" | "species" | "resources" | "events";
+export type MicroLifeMode = "life" | "species" | "resources" | "events" | "grid";
 
 export type MicroLifeAgent = {
   id: string;

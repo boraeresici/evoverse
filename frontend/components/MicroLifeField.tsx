@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Gauge,
+  Grid3x3,
   Info,
   Layers3,
   Pause,
@@ -61,7 +62,8 @@ const modes: Array<{
   { id: "life", label: "Life", icon: Sprout },
   { id: "species", label: "Species", icon: Layers3 },
   { id: "resources", label: "Resources", icon: Gauge },
-  { id: "events", label: "Events", icon: RadioTower }
+  { id: "events", label: "Events", icon: RadioTower },
+  { id: "grid", label: "Grid", icon: Grid3x3 }
 ];
 
 const speeds = [0.55, 1, 1.65];
@@ -355,6 +357,11 @@ function MicroLifeLegend() {
           </div>
         </div>
       ))}
+      <p className="micro-legend-note">
+        Grid: hücre konumu bir örneklemedir — popülasyonun gerçek uzamsal konumu
+        değildir. Doluluk tür payını, parlaklık doğum/ölümü, kayma göç baskısını,
+        dönüş bölgenin elini izler. Çözünürlük yakınlaştırmayla artar.
+      </p>
     </div>
   );
 }
@@ -448,12 +455,24 @@ function drawMicroLifeFrame({
   context.roundRect(left, top, fieldSize, fieldSize, 10);
   context.clip();
 
-  if (mode === "resources" || mode === "life") {
-    drawResourceField(context, projection, left, top, fieldSize, time, mode);
-  }
-  drawAgents(context, agents, projection, region, left, top, fieldSize, time, zoom, mode);
-  if (mode === "events") {
-    drawEventSignals(context, events, projection, left, top, fieldSize, time);
+  if (mode === "grid") {
+    // The same live agents the other modes draw as dots, rasterized into square
+    // cells. Every real driver already lives on the agent — species share sets how
+    // many cells a lineage lights, the birth/death reconcile fades cells in and out
+    // by growth, migration pressure is the drift that carries cells sideways, and a
+    // latched region's hand is the spin — so the grid inherits them for free rather
+    // than inventing a second truth. Only the cell *position* is a sampling, never a
+    // real coordinate (there is no intra-region position in the world); the legend
+    // says so.
+    drawGridField(context, agents, region, left, top, fieldSize, time, zoom);
+  } else {
+    if (mode === "resources" || mode === "life") {
+      drawResourceField(context, projection, left, top, fieldSize, time, mode);
+    }
+    drawAgents(context, agents, projection, region, left, top, fieldSize, time, zoom, mode);
+    if (mode === "events") {
+      drawEventSignals(context, events, projection, left, top, fieldSize, time);
+    }
   }
   drawFrame(context, left, top, fieldSize, region, projection, time);
   context.restore();
@@ -562,6 +581,82 @@ function drawAgents(
       context.lineWidth = 1;
       context.stroke();
     }
+  }
+}
+
+function drawGridField(
+  context: CanvasRenderingContext2D,
+  agents: LiveAgent[],
+  region: RegionDetail["region"],
+  left: number,
+  top: number,
+  fieldSize: number,
+  time: number,
+  zoom: number
+) {
+  // Zoom drives resolution, not just magnification: the cell holds a target pixel
+  // size and the count is derived from it, so zooming in refines the grid instead
+  // of enlarging blocks. Bounds keep cells honest — below ~7px they moiré against
+  // the frame and small shares round to fake precision; above ~15px the field is
+  // too coarse to read a distribution.
+  const targetCell = 12 / zoom;
+  const cols = Math.max(20, Math.min(96, Math.round(fieldSize / targetCell)));
+  const cell = fieldSize / cols;
+  const collapseFade = region.collapsed ? 0.5 : 1;
+  // Same circulation the dots get: a latched region coils in the direction of its
+  // hand, a racemic one has none (spin 1). See §8.
+  const spin = regionHandSign(region) || 1;
+
+  // Bin the live agents into cells. Each cell keeps a per-species presence tally so
+  // the dominant lineage wins the cell, plus a total so a clustered cell reads
+  // brighter than a lone one. At most one entry per agent, so this stays cheap even
+  // at the finest grid.
+  const cells = new Map<number, { total: number; byHue: Map<number, number> }>();
+  for (const agent of agents) {
+    const presence = easeLife(agent.life);
+    if (presence <= 0.01) {
+      continue;
+    }
+    const jitter = region.collapsed ? 0.005 : 0.015 + agent.growthRate * 0.8;
+    const centerX = 0.5 + (agent.x - 0.5) * zoom;
+    const centerY = 0.5 + (agent.y - 0.5) * zoom;
+    const flowX = Math.sin(time + agent.phase) * jitter + agent.driftX * Math.sin(time * 0.18);
+    const flowY =
+      Math.cos(time * 0.92 + agent.phase) * jitter * spin + agent.driftY * Math.cos(time * 0.18);
+    const gx = Math.min(cols - 1, Math.max(0, Math.floor(clamp01(centerX + flowX) * cols)));
+    const gy = Math.min(cols - 1, Math.max(0, Math.floor(clamp01(centerY + flowY) * cols)));
+    const index = gy * cols + gx;
+    let bucket = cells.get(index);
+    if (!bucket) {
+      bucket = { total: 0, byHue: new Map() };
+      cells.set(index, bucket);
+    }
+    // Weight the vote by share so a dominant lineage claims contested cells, but
+    // still tally presence into total so births/deaths fade the cell's brightness.
+    bucket.total += presence;
+    bucket.byHue.set(agent.hue, (bucket.byHue.get(agent.hue) ?? 0) + presence * (1 + agent.share));
+  }
+
+  const inset = cell > 5 ? 0.75 : 0.35;
+  const lightness = region.collapsed ? 44 : 48;
+  for (const [index, bucket] of cells) {
+    const gx = index % cols;
+    const gy = Math.floor(index / cols);
+    let hue = 0;
+    let best = -1;
+    for (const [candidate, weight] of bucket.byHue) {
+      if (weight > best) {
+        best = weight;
+        hue = candidate;
+      }
+    }
+    // A cell holding ~1.5 agents' worth of presence reads at full strength; a single
+    // faint (spawning/dying) agent reads dimmer, which is what makes a birth fade in
+    // and a death fade out at the cell scale.
+    const intensity = Math.min(1, bucket.total / 1.5);
+    const alpha = collapseFade * (0.16 + intensity * 0.62);
+    context.fillStyle = `hsl(${hue} 54% ${lightness}% / ${alpha})`;
+    context.fillRect(left + gx * cell + inset, top + gy * cell + inset, cell - inset * 2, cell - inset * 2);
   }
 }
 
