@@ -169,6 +169,11 @@ def correlation_length(
     return {field: correlation_field(state, field, metric=metric) for field in fields}
 
 
+SLOPE_FLAT = 0.08  # ξ/L slope at or below this: reach does not grow with the world
+SLOPE_CRITICAL = 0.25  # at or above this: reach tracks the world
+COLLAPSE_RATIO_MAX = 1.5  # across-size spread this many × the across-seed floor
+
+
 def scale_free_scan(
     seed: int,
     ticks: int,
@@ -176,57 +181,196 @@ def scale_free_scan(
     sizes: list[tuple[int, int]],
     field: str = "stability",
     metric: str = "manhattan",
+    seeds: int = 1,
 ) -> dict[str, Any]:
     """Re-seed & advance at each (width, height); measure how ξ scales with L.
 
     Scale-free / critical ⇒ ξ grows with L (ξ/L roughly constant) and the C(r/L)
-    curves collapse onto one another. Deterministic: only width/height vary, the seed
-    is held fixed.
+    curves collapse onto one another.
+
+    ``seeds`` is the ensemble size: the ladder is replayed under ``seed``,
+    ``seed + 1``, ..., and every figure returned is a statistic over those runs
+    rather than a reading off one of them.
+
+    One seed cannot support a verdict, which is why the ensemble exists. The slope
+    of ξ against L moves by about ±0.09 from seed to seed on this world with
+    nothing else changed — half the width of the entire band separating "flat"
+    (< 0.08) from "grows with L" (≥ 0.25). A single run therefore lands wherever
+    its seed puts it, and the old single-seed verdict was reporting that coin flip
+    as a measurement. An ensemble turns the slope into an estimate with a standard
+    error, which is what lets the verdict return ``inconclusive`` instead of
+    committing to noise.
+
+    Ensemble members are consecutive integers. Every draw in the engine is keyed
+    through SHA-256 over ``(seed, label, tick, id)``, so ``seed`` and ``seed + 1``
+    share no stream — consecutive members stay reproducible and inspectable
+    without correlating with each other.
+
+    Determinism is unchanged: the same ``(seed, ticks, sizes, seeds)`` yields
+    identical numbers.
     """
     # Imported here to avoid any import-time coupling; safe (not in the package init).
     from app.simulation import SimulationEngine, seed_alpha
 
-    points: list[dict[str, Any]] = []
+    ensemble = [seed + offset for offset in range(max(1, seeds))]
     skipped: list[dict[str, Any]] = []
-    normalized_curves: list[list[tuple[float, float]]] = []
-    for width, height in sizes:
-        # The seeder pins species origins to fixed region ids (up to region-101), so
-        # worlds smaller than the default 12x9 can't be seeded. Skip rather than crash;
-        # the scale-free ladder scans upward from the default.
-        try:
-            state = seed_alpha(seed=seed, width=width, height=height)
-        except KeyError:
-            skipped.append({"width": width, "height": height, "reason": "unseedable-size"})
-            continue
-        SimulationEngine(seed=seed).advance(state, ticks=ticks)
-        result = correlation_field(state, field, metric=metric)
-        length = max(width, height)
-        xi = result["xi"]
-        points.append(
-            {
-                "width": width,
-                "height": height,
-                "L": length,
-                "xi": xi,
-                "xiOverL": round(xi / length, 4) if length else 0.0,
-                "xiFloored": result["xiFloored"],
-                "degenerate": result["degenerate"],
-            }
-        )
-        if result["curve"]:
-            normalized_curves.append(
-                [(r / length, c) for r, c in result["curve"]]
-            )
+    skipped_sizes: set[tuple[int, int]] = set()
+    # (width, height) -> one entry per ensemble member.
+    curves_by_size: dict[tuple[int, int], list[list[tuple[float, float]]]] = defaultdict(list)
+    results_by_size: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
+    slopes: list[float] = []
+    member_collapses: list[float] = []
 
-    collapse_error = _data_collapse_error(normalized_curves)
+    for member in ensemble:
+        member_curves: list[list[tuple[float, float]]] = []
+        member_ls: list[float] = []
+        member_xis: list[float] = []
+        for width, height in sizes:
+            # The seeder pins species origins to fixed region ids (up to region-101), so
+            # worlds smaller than the default 12x9 can't be seeded. Skip rather than crash;
+            # the scale-free ladder scans upward from the default. The constraint is on
+            # region ids and not on the seed, so a size unseedable for one member is
+            # unseedable for all of them — record it once.
+            try:
+                state = seed_alpha(seed=member, width=width, height=height)
+            except KeyError:
+                if (width, height) not in skipped_sizes:
+                    skipped_sizes.add((width, height))
+                    skipped.append(
+                        {"width": width, "height": height, "reason": "unseedable-size"}
+                    )
+                continue
+            SimulationEngine(seed=member).advance(state, ticks=ticks)
+            result = correlation_field(state, field, metric=metric)
+            length = max(width, height)
+            results_by_size[(width, height)].append(result)
+            if result["curve"]:
+                normalized = [(r / length, c) for r, c in result["curve"]]
+                curves_by_size[(width, height)].append(normalized)
+                member_curves.append(normalized)
+            if not result["degenerate"]:
+                member_ls.append(length)
+                member_xis.append(result["xi"])
+        # Each member gets its own slope and its own collapse, and the ensemble is
+        # taken over those. Pooling every (L, ξ) point into one fit instead would
+        # hand back a standard error built from the scatter *within* a run, which is
+        # not the quantity in doubt — the seed is.
+        if len(member_ls) >= 2:
+            slopes.append(_least_squares_slope(member_ls, member_xis))
+        member_collapse = _data_collapse_error(member_curves)
+        if member_collapse is not None:
+            member_collapses.append(member_collapse)
+
+    points = [
+        _ensemble_point(width, height, results_by_size[(width, height)])
+        for width, height in sizes
+        if results_by_size[(width, height)]
+    ]
+    collapse_error = _mean(member_collapses)
+    # The noise floor that collapse has to beat: how far the C(r/L) curves sit from
+    # one another at a *fixed* size, across seeds. Spread across sizes only means a
+    # size effect if it exceeds the spread the seed alone produces. With one seed the
+    # two are indistinguishable, which is exactly how the old fixed 0.05 gate came to
+    # pass every run it ever saw without ever discriminating.
+    seed_noise = _mean(
+        [
+            noise
+            for noise in (
+                _data_collapse_error(curves_by_size[size]) for size in curves_by_size
+            )
+            if noise is not None
+        ]
+    )
+    slope = _spread(slopes)
+    collapse_ratio = (
+        round(collapse_error / seed_noise, 4)
+        if collapse_error is not None and seed_noise
+        else None
+    )
     return {
         "field": field,
         "metric": metric,
         "ticks": ticks,
+        "seeds": ensemble,
         "points": points,
         "skipped": skipped,
+        "slope": slope,
         "dataCollapseError": collapse_error,
-        "verdict": _scale_free_verdict(points, collapse_error),
+        "seedNoise": seed_noise,
+        "collapseRatio": collapse_ratio,
+        "verdict": _scale_free_verdict(points, slope, collapse_ratio),
+    }
+
+
+def _mean(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
+
+
+def _spread(values: list[float]) -> dict[str, Any]:
+    """mean / sd / standard error / 95% CI of one statistic over the ensemble.
+
+    ``sd`` is the seed-to-seed spread — how much the world itself moves the number.
+    ``se = sd / sqrt(n)`` is how well the ensemble pins the mean, and it is the only
+    one of the two a threshold may be compared against.
+
+    A one-member ensemble has no spread to report: sd and se are None and the CI
+    degenerates to the point estimate. That is the honest rendering of a single run
+    — a number carrying no claim — and it is what makes the gates below refuse to
+    call a single seed critical.
+    """
+    n = len(values)
+    if n == 0:
+        return {"mean": None, "sd": None, "se": None, "ci95": None, "n": 0}
+    mean = sum(values) / n
+    if n == 1:
+        return {
+            "mean": round(mean, 4),
+            "sd": None,
+            "se": None,
+            "ci95": [round(mean, 4), round(mean, 4)],
+            "n": 1,
+        }
+    variance = sum((value - mean) ** 2 for value in values) / (n - 1)
+    sd = math.sqrt(variance)
+    se = sd / math.sqrt(n)
+    return {
+        "mean": round(mean, 4),
+        "sd": round(sd, 4),
+        "se": round(se, 4),
+        "ci95": [round(mean - 1.96 * se, 4), round(mean + 1.96 * se, 4)],
+        "n": n,
+    }
+
+
+def _ensemble_point(
+    width: int, height: int, results: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """One ladder rung: ξ averaged over the ensemble, with how it varied.
+
+    ``xiFloored`` and ``degenerate`` stay booleans so a reader can still ask the rung
+    a yes/no, but over an ensemble they are majority verdicts, not facts — the seed
+    counts beside them (``flooredSeeds``, ``degenerateSeeds``) are what actually say
+    how much of the rung resolved.
+    """
+    length = max(width, height)
+    usable = [result for result in results if not result["degenerate"]]
+    xi = _spread([result["xi"] for result in usable])
+    floored = sum(1 for result in usable if result["xiFloored"])
+    return {
+        "width": width,
+        "height": height,
+        "L": length,
+        "xi": xi["mean"],
+        "xiSd": xi["sd"],
+        "xiSe": xi["se"],
+        "xiOverL": (
+            round(xi["mean"] / length, 4) if xi["mean"] is not None and length else None
+        ),
+        "seeds": len(results),
+        "flooredSeeds": floored,
+        "degenerateSeeds": len(results) - len(usable),
+        "xiFloored": bool(usable) and floored > len(usable) / 2,
+        "degenerate": not usable,
     }
 
 
@@ -266,13 +410,23 @@ def _interp(curve: list[tuple[float, float]], x: float) -> float | None:
     return curve[-1][1]
 
 
-def _scale_free_verdict(points: list[dict[str, Any]], collapse_error: float | None) -> str:
-    """Heuristic label from how ξ tracks L. Numbers travel with it — judge, don't trust.
+def _scale_free_verdict(
+    points: list[dict[str, Any]],
+    slope: dict[str, Any],
+    collapse_ratio: float | None,
+) -> str:
+    """Label from how ξ tracks L, judged against the ensemble's own error bar.
 
     There is deliberately no "super critical / one ordered domain" label. It used to
     be returned when most sizes produced no zero-crossing, but the sum rule forbids
     that outcome for any field that varies — the branch could only ever fire on a
     field with no variance at all, which is ``degenerate``, not ordered.
+
+    The gates read the 95% CI, not the point estimate. A slope is only called flat or
+    scale-free when its whole interval sits on one side of the threshold; an interval
+    straddling one is ``inconclusive`` — the run happened and did not resolve the
+    question, which is a thing a point estimate can never say and the reason this
+    scan used to answer with whatever its single seed felt like.
     """
     usable = [p for p in points if not p["degenerate"]]
     if len(usable) < 2:
@@ -282,14 +436,33 @@ def _scale_free_verdict(points: list[dict[str, Any]], collapse_error: float | No
     # that resolved nothing still walks away labelled "sub critical".
     if sum(1 for p in usable if p["xiFloored"]) >= len(usable) / 2:
         return "underpowered"
-    ls = [p["L"] for p in usable]
-    xis = [p["xi"] for p in usable]
-    slope = _least_squares_slope(ls, xis)
-    if slope >= 0.25 and (collapse_error is None or collapse_error <= 0.05):
-        return "critical"  # ξ grows with L and curves collapse → scale-free
-    if slope < 0.08:
+    if slope["ci95"] is None:
+        return "insufficient"
+    low, high = slope["ci95"]
+    if high < SLOPE_FLAT:
         return "sub_critical"  # ξ ~ constant while L grows → fixed patch size
-    return "intermediate"
+    if low >= SLOPE_CRITICAL and _curves_collapse(collapse_ratio):
+        return "critical"  # ξ grows with L and curves collapse → scale-free
+    if low >= SLOPE_FLAT and high < SLOPE_CRITICAL:
+        return "intermediate"
+    return "inconclusive"
+
+
+def _curves_collapse(collapse_ratio: float | None) -> bool:
+    """Do the C(r/L) curves agree across sizes as well as they do across seeds?
+
+    ``collapse_ratio`` is the across-size spread over the across-seed spread. Near 1
+    the sizes sit as close together as the seed noise allows, which is a collapse —
+    there is no size effect left to find. Well above 1 the sizes disagree by more
+    than chance, so the curves genuinely do not collapse.
+
+    A single-seed run has no noise floor to divide by, so the ratio is None and this
+    returns False: unanswerable, rather than passed by default. The gate it replaces
+    was a bare ``collapse_error <= 0.05``, which across every run measured on this
+    world never once exceeded 0.035 — it passed unconditionally and decided nothing,
+    leaving "critical" resting on the slope alone.
+    """
+    return collapse_ratio is not None and collapse_ratio <= COLLAPSE_RATIO_MAX
 
 
 def _least_squares_slope(xs: list[float], ys: list[float]) -> float:

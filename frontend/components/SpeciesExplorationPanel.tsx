@@ -13,6 +13,7 @@ import {
   SkipForward
 } from "lucide-react";
 import { MicroLifeField } from "@/components/MicroLifeField";
+import { OrganismLens } from "@/components/OrganismLens";
 import { PhylogeneticTree } from "@/components/PhylogeneticTree";
 import {
   CATEGORY_META,
@@ -22,12 +23,20 @@ import {
   type EventCategory
 } from "@/lib/speciesEvents";
 import { CARD_HEIGHT, CARD_WIDTH, buildSpeciesCardSvg } from "@/lib/speciesCard";
-import type { DynamicReportData, RegionDetail, SpeciesDetail, SpeciesSummary } from "@/lib/types";
+import type {
+  DynamicReportData,
+  RegionDetail,
+  RegionSummary,
+  SpeciesDetail,
+  SpeciesSummary
+} from "@/lib/types";
 
 type SpeciesExplorationPanelProps = {
   data: SpeciesDetail;
   allSpecies: SpeciesSummary[];
   report: DynamicReportData | null;
+  /** The lineage's origin region — the Lens gates on its chirality lock. */
+  originRegion: RegionSummary | null;
 };
 
 const PLAYBACK_INTERVAL_MS = 1600;
@@ -35,7 +44,8 @@ const PLAYBACK_INTERVAL_MS = 1600;
 export function SpeciesExplorationPanel({
   data,
   allSpecies,
-  report
+  report,
+  originRegion
 }: SpeciesExplorationPanelProps) {
   const extinctLineage = data.species.status === "extinct";
 
@@ -48,10 +58,14 @@ export function SpeciesExplorationPanel({
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // Owned here, not in the Lens: the field has to know to hold still while a
+  // form is open, and this is the nearest place that holds both.
+  const [lensOpen, setLensOpen] = useState(false);
 
   useEffect(() => {
     setSelectedIndex(0);
     setPlaying(false);
+    setLensOpen(false);
   }, [data.species.id]);
 
   useEffect(() => {
@@ -201,7 +215,16 @@ export function SpeciesExplorationPanel({
             compact
             events={timeline.map((item) => item.event)}
             eyebrow="Species Micro Replay"
+            inspect={
+              <OrganismLens
+                onOpenChange={setLensOpen}
+                open={lensOpen}
+                originRegion={originRegion}
+                species={data.species}
+              />
+            }
             populations={speciesProjection.populations}
+            quieted={lensOpen}
             region={speciesProjection.region}
             report={report}
             title="Distribution Field"
@@ -408,6 +431,10 @@ function speciesReplayProjection(data: SpeciesDetail): {
       resourceDensity: clamp01(adaptation * 0.35 + mobility * 0.25 + expansion * 0.4),
       stability: clamp01(resilience * 0.45 + cooperation * 0.2 + (1 - extinctionRisk) * 0.35),
       lifeIndex: clamp01(Math.log10(data.species.population + 1) / 5.4),
+      // Synthetic distribution field, not a real region: it stands for the lineage,
+      // so it carries the lineage's own hand rather than any region's.
+      chiralityEe: data.species.chirality,
+      chiralityLocked: data.species.chirality !== 0,
       collapsed: data.species.status === "extinct",
       dominantSpeciesId: data.species.id,
       dominantSpeciesName: data.species.name,

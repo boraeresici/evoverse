@@ -36,10 +36,44 @@ class RegionRules:
     resource_stability_baseline: float = 0.4
     resource_stability_bonus_cap: float = 0.02
     resource_stability_factor: float = 0.018
+    # Consumer-resource coupling: what a region's populations draw out of it each
+    # tick, as sum(population * energy_consumption) / scale. Without this the
+    # regions drifted on their own noise no matter how much life they carried —
+    # life was a passenger, `Population.energy_consumption` was computed, stored
+    # and served but read by nothing, and nothing could ever deplete.
+    #
+    # Scale is the divisor that turns a headcount into a resource draw. For
+    # reference, regrowth (reversion toward equilibrium) tops out at
+    # resource_reversion_factor * resource_equilibrium = 0.0104/tick, and the
+    # busiest region on the base seed carries sum(N*c) ~ 2500. The two meet near
+    # scale = 250k, so anything far above that is a rounding error and anything
+    # far below strips the map bare.
+    #
+    # `resource_density` is rounded to 3dp every tick, so a draw under 0.0005 —
+    # a thin region, at this scale — contributes nothing on any *single* tick and
+    # only tells across many. The coupling is therefore blunter for sparse regions
+    # than the arithmetic suggests; the busy ones carry it.
+    consumption_pressure_scale: float = 400000
     collapsed_stability_penalty: float = 0.006
     collapsed_energy_penalty: float = 0.004
     mutation_stability_penalty_factor: float = 0.08
-    resource_shift_threshold: float = 0.16
+    # How far a region's resource must move *since the chronicle last reported it*
+    # to be worth reporting again. This is a reporting threshold — it does not
+    # touch the dynamics, only what gets told.
+    #
+    # It used to be 0.16 measured against the previous tick, which no region could
+    # ever reach: a single tick moves at most ~0.057 (walk +/-0.04, reversion, draw),
+    # so the rule fired exactly zero times in 10,000 ticks and the 13-tick scripted
+    # shift was the only "resource shift" Alpha ever had. The value was never the
+    # problem — 0.16 is the 90th percentile of a 25-tick window, i.e. someone chose
+    # it for a trend and wired it to a tick. Measured against the last report the
+    # world turns out to be full of real movement: 16,411 shifts of >=0.16 per
+    # 10,000 ticks, 21x the scripted rate it was covering for.
+    #
+    # 0.32 is roughly 0.52 -> 0.20, normal to scarce: unambiguous, not noise. It
+    # yields ~2,650 per 10,000 ticks, about 25 per region — a notable resource event
+    # every ~400 years of Alpha Age.
+    resource_shift_threshold: float = 0.32
     collapse_stability_threshold: float = 0.16
     collapse_resource_threshold: float = 0.18
     recovery_stability_threshold: float = 0.34
@@ -47,8 +81,6 @@ class RegionRules:
     recovery_energy_threshold: float = 0.3
     forced_collapse_stability: float = 0.12
     forced_collapse_resource: float = 0.13
-    forced_resource_rise_delta: float = 0.18
-    forced_resource_fall_delta: float = -0.19
 
 
 @dataclass(frozen=True)
@@ -62,7 +94,15 @@ class PopulationRules:
     migration_baseline: float = 0.42
     migration_trait_factor: float = 0.2
     decline_min_previous_population: int = 500
-    decline_population_ratio: float = 0.72
+    # Fraction of `decline_reference_population` a count must fall under to be
+    # reported as a decline. Reporting only — the dynamics do not read it.
+    #
+    # It used to be 0.72 against the *previous tick*: a 28% single-tick crash, when
+    # the worst tick this world can produce loses ~11% and the realistic floor is
+    # ~1%. It fired zero times in 10,000 ticks. Measured against the lineage's peak
+    # instead, 0.60 — down 40% from its high-water mark — is a genuine collapse and
+    # fires ~1,095 times per 10,000 ticks.
+    decline_population_ratio: float = 0.60
     severe_decline_percent: int = 40
     migration_min_population: int = 1400
     migration_pressure_threshold: float = 0.48
@@ -92,10 +132,19 @@ class SpeciationRules:
 
 @dataclass(frozen=True)
 class ChronicleRules:
-    forced_resource_shift_interval: int = 13
-    forced_resource_rise_interval: int = 26
-    forced_decline_interval: int = 17
-    forced_decline_percent: int = 14
+    """The scripted beats. Only one is left.
+
+    A 13-tick resource shift and a 17-tick species decline used to live here too,
+    and between them they wrote 91% of the chronicle — not because the world is
+    quiet, but because the organic rules they stood in for had thresholds written
+    for trends and wired to single ticks, so those rules fired zero times. With the
+    resolution fixed the world reports 2,424 real shifts and 1,095 real declines per
+    10,000 ticks on its own, and both beats were deleted. See `resource_shift_threshold`.
+
+    Collapse survives only because nothing collapses on its own yet. It emits
+    `synthetic: true` so the chronicle does not pass a clock off as an ecology.
+    """
+
     forced_collapse_interval: int = 151
 
 
@@ -120,6 +169,37 @@ class ChiralityRules:
     seed_bias_max: float = 0.02
     amplify_k: float = 0.06
     noise_scale: float = 0.03
+    # Thermal racemization: the back-reaction that pulls any excess toward 50/50.
+    # In real chemistry amplification always races this; with no opposing term the
+    # cubic gain `amplify_k` had nothing to beat, so every region committed no
+    # matter what and the gate could not be missed.
+    #
+    # The two together give the pitchfork an actual control parameter,
+    # mu = amplify_k - racemization_rate, which is what makes this a bifurcation
+    # rather than a permanent post-bifurcation regime: mu > 0 leaves ee = 0
+    # unstable and a region commits; mu <= 0 makes racemic stable and no number of
+    # ticks will produce a hand.
+    #
+    # But mu > 0 is not enough to *latch*. Ignoring field and noise, the drift
+    # settles at ee* = sqrt(1 - racemization_rate / amplify_k), which falls below
+    # `ee_lock_threshold` long before mu reaches zero. Past that, regions hover
+    # short of the latch forever — and because the life gate reads the universe
+    # mean rather than the locks, a universe there still *earns Stabilization while
+    # no lineage ever adopts a hand*. Measured: 0.020 leaves 0/108 regions locked
+    # with the era still granted. Keep this well under that cliff (~0.018 measured;
+    # the naive ee* formula puts it at 0.011, but the latch is an absorbing barrier
+    # so noise carries regions over it). At 0.008, ee* = 0.93 and all 108 latch.
+    racemization_rate: float = 0.008
+    # Universe-wide symmetry-breaking field — the analogue of Ozturk & Sasselov's
+    # magnetized surface (CISS). Without it, each region's hand is set by its own
+    # local noise and the map freezes into opposing domains: locally locked,
+    # globally racemic. A uniform field makes every region fall the same way, so
+    # one hand wins everywhere — which is the whole point of the magnetic
+    # mechanism, and why life is L-handed *everywhere* rather than in patches.
+    # Measured on the 10-seed sweep: 0.0 -> 0/10 single-handed universes,
+    # 0.002 -> 6/10, 0.005 -> 10/10. The field's sign is drawn per seed, so which
+    # hand a universe gets stays contingent while being global.
+    field_strength: float = 0.005
     ee_lock_threshold: float = 0.9
     avalanche_bleed: float = 0.05
     avalanche_min_source: float = 0.75

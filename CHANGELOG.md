@@ -37,6 +37,23 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ### Added
 
+- **`/science` — does Alpha flock?** A public page carrying the scale-free
+  correlation measurement from Cavagna et al. (starling flocks, PNAS 2010) applied
+  to Alpha, backed by a new `/universes/alpha/diagnostics` endpoint. Prose lives in
+  `content/science.md` like the other info pages; `CriticalityPanel` renders the
+  reach curves, the size scan, patch sizes and the census. Every panel states the
+  evidence it stands on, draws the reach curve faint past the point where too few
+  region pairs remain to average, and leaves a slot visibly blank — not greyed —
+  where the evidence cannot carry a number. The trigger support gate lives in the
+  API (`MIN_TRIGGER_SUPPORT`), not the view, so no consumer can print singleton
+  lift by accident. Vocabulary on the page is deliberately ours ("reach",
+  "flocking", "patches"); the FAQ maps each one to its name in the literature.
+- **Worker-measured scale-free scan.** The scan replays four lattice sizes from
+  seed and costs ~20s against ~8ms for every other diagnostic, so it cannot ride a
+  request. The worker measures it on a timer and upserts into `diagnostics_runs`
+  (migration `013`), keyed on `(universe_id, kind)` so it holds one row and cannot
+  grow. The API serves it as a dated measurement; `null` renders as a blank rather
+  than a verdict.
 - **`population` report scope in the UI.** `/reports?scope=population` — a single
   species' colony within a single region, the one view of a colony's own
   trajectory — was implemented end to end (backend metrics, frontend labels,

@@ -55,7 +55,7 @@ class SimulationEngine:
             self._advance_regions(state)
             self._advance_chirality(state)
             self._advance_populations(state)
-            self._maybe_emit_forced_chronicle_events(state)
+            self._maybe_emit_scripted_collapse(state)
             self._maybe_speciate(state)
             self._update_species_statuses(state)
             self._recalculate_dominant_species(state)
@@ -101,14 +101,37 @@ class SimulationEngine:
         )
         return action
 
+    def _consumption_pressure(self, state: AlphaState) -> dict[str, float]:
+        """What each region's populations draw out of it this tick.
+
+        Reads the counts left by the previous tick's `_advance_populations`, so
+        regions are depleted by the life they actually carried, and the loop
+        closes: more population -> less resource -> worse habitat fit -> less
+        growth -> less draw. That feedback is what a carrying capacity *is*, and
+        it is also where competition between species comes from for free — two
+        lineages in one region now drink from the same well.
+        """
+        rules = self.rules.region
+        pressure: dict[str, float] = defaultdict(float)
+        for population in state.populations.values():
+            if population.population_count <= 0:
+                continue
+            pressure[population.region_id] += (
+                population.population_count * population.energy_consumption
+            )
+        return {
+            region_id: draw / rules.consumption_pressure_scale
+            for region_id, draw in pressure.items()
+        }
+
     def _advance_regions(self, state: AlphaState) -> None:
         rules = self.rules.region
+        consumption = self._consumption_pressure(state)
         for region in state.regions.values():
             rng = stable_rng(state.seed, "region-drift", state.universe.tick, region.id)
             energy_bias, resource_bias, mutation_bias, catalyst_context = (
                 self._active_catalyst_context(state, region.id)
             )
-            resource_before = region.resource_density
             energy_delta = (
                 rng.uniform(rules.energy_delta_min, rules.energy_delta_max)
                 + energy_bias
@@ -120,6 +143,7 @@ class SimulationEngine:
                 + resource_bias
                 + (rules.resource_equilibrium - region.resource_density)
                 * rules.resource_reversion_factor
+                - consumption.get(region.id, 0.0)
             )
             resource_pressure = max(
                 -rules.resource_stability_bonus_cap,
@@ -148,8 +172,15 @@ class SimulationEngine:
                     3,
                 )
 
-            if abs(region.resource_density - resource_before) >= rules.resource_shift_threshold:
-                direction = "rise" if region.resource_density > resource_before else "fall"
+            # Measured against what the chronicle last reported, not against last
+            # tick. A tick moves the resource ~0.02 and a real shift takes ~50 to
+            # build, so the per-tick comparison this used to make could not see one
+            # — it fired zero times in 10,000 ticks. Reporting resets the reference,
+            # so a long slide is told once per threshold-worth of movement rather
+            # than every tick it keeps sliding.
+            reported = region.last_reported_resource_density
+            if abs(region.resource_density - reported) >= rules.resource_shift_threshold:
+                direction = "rise" if region.resource_density > reported else "fall"
                 title, summary = event_templates.region_resource_shift(region, direction)
                 state.add_event(
                     EventType.REGION_RESOURCE_SHIFT,
@@ -158,12 +189,13 @@ class SimulationEngine:
                     severity=2 if direction == "rise" else 3,
                     region_id=region.id,
                     payload={
-                        "from": round(resource_before, 3),
+                        "from": round(reported, 3),
                         "to": region.resource_density,
                         "direction": direction,
                         **catalyst_context,
                     },
                 )
+                region.last_reported_resource_density = region.resource_density
 
             if region.collapsed and self._region_has_recovered(region):
                 region.collapsed = False
@@ -183,25 +215,55 @@ class SimulationEngine:
                     payload=catalyst_context,
                 )
 
+    def _field_direction(self, state: AlphaState) -> int:
+        """The hand this universe's symmetry-breaking field points toward.
+
+        Drawn once per seed, uniform across the map: contingent (this universe
+        could have gone either way) but global (every region feels the same
+        push). That combination is what turns local symmetry breaking into a
+        single planetary hand. See docs/CHIRALITY_AND_MIND.md §6.1.
+        """
+        return 1 if stable_rng(state.seed, "chirality-field").random() < 0.5 else -1
+
     def _advance_chirality(self, state: AlphaState) -> None:
         """Molecular symmetry breaking (T1). See docs/CHIRALITY_AND_MIND.md §6.1.
 
-        Each unlocked region drifts through a pitchfork bifurcation, then latches
-        irreversibly once |ee| crosses the lock threshold. A locked, strongly
-        handed region then magnetizes its unlocked neighbours (avalanche), so a
-        single broken hand spreads across the map.
+        Each unlocked region drifts through a pitchfork bifurcation biased by the
+        universe's uniform field, then latches irreversibly once |ee| crosses the
+        lock threshold. A locked, strongly handed region then magnetizes its
+        unlocked neighbours (avalanche), so the hand spreads across the map.
+
+        The field is what makes the result *homochiral* rather than merely
+        locked: without it the cubic term amplifies whichever way local noise
+        happened to push, and the map freezes into opposing domains.
         """
         rules = self.rules.chirality
         locked_before = sum(region.chirality_locked for region in state.regions.values())
         newly_locked: list[Region] = []
+        field = rules.field_strength * self._field_direction(state)
 
         for region in state.regions.values():
+            # A latched region does not racemize: the lock stands for the
+            # self-sustaining, autocatalytic fixation that outruns the back-
+            # reaction (Ozturk's avalanche magnetization is persistent, not a
+            # steady state held up by ongoing work). Racemization is a pressure on
+            # regions still deciding, not a tax on ones that already decided.
             if region.chirality_locked:
                 continue
             rng = stable_rng(state.seed, "chirality-drift", state.universe.tick, region.id)
             ee = region.chirality_ee
+            # Noise fades as a region commits; the field does not — it is external.
             noise = (rng.random() * 2 - 1) * rules.noise_scale * (1 - abs(ee))
-            ee = clamp_signed(ee + rules.amplify_k * ee * (1 - ee * ee) + noise)
+            # amplify_k*ee*(1-ee^2) - racemization_rate*ee  =>  effective gain
+            # (amplify_k - racemization_rate)*ee - amplify_k*ee^3: the pitchfork
+            # normal form, with mu = amplify_k - racemization_rate as its control.
+            ee = clamp_signed(
+                ee
+                + rules.amplify_k * ee * (1 - ee * ee)
+                - rules.racemization_rate * ee
+                + field
+                + noise
+            )
             if abs(ee) >= rules.ee_lock_threshold:
                 region.chirality_ee = math.copysign(1.0, ee)
                 region.chirality_locked = True
@@ -352,11 +414,19 @@ class SimulationEngine:
             population.population_count = max(0, next_count)
             population.last_updated_tick = state.universe.tick
 
-            if (
-                previous_count > rules.decline_min_previous_population
-                and population.population_count < previous_count * rules.decline_population_ratio
+            # A decline is measured down from the lineage's high-water mark here,
+            # not from last tick. The worst tick this world can produce loses ~11%
+            # and the typical one gains 0.6%, so "lost a fifth since last tick" was
+            # a sentence Alpha could never say — the rule fired zero times in 10,000
+            # ticks and every decline in the chronicle was the scripted 17-tick one.
+            reference = population.decline_reference_population
+            if population.population_count > reference:
+                population.decline_reference_population = population.population_count
+            elif (
+                reference > rules.decline_min_previous_population
+                and population.population_count < reference * rules.decline_population_ratio
             ):
-                decline_percent = int((1 - population.population_count / previous_count) * 100)
+                decline_percent = int((1 - population.population_count / reference) * 100)
                 title, summary = event_templates.species_declined(species, decline_percent)
                 state.add_event(
                     EventType.SPECIES_DECLINED,
@@ -367,6 +437,9 @@ class SimulationEngine:
                     species_id=species.id,
                     payload={"decline_percent": decline_percent},
                 )
+                # Reset to the new floor: another report costs another full drop,
+                # so a dying lineage is reported a few times, not every tick.
+                population.decline_reference_population = population.population_count
 
             if (
                 population.population_count > rules.migration_min_population
@@ -380,60 +453,45 @@ class SimulationEngine:
                     load_weighted[species_id] / total, 4
                 )
 
-    def _maybe_emit_forced_chronicle_events(self, state: AlphaState) -> None:
+    def _maybe_emit_scripted_collapse(self, state: AlphaState) -> None:
+        """The last scripted beat, and it is labelled as one.
+
+        This used to have three: a resource shift every 13 ticks, a species
+        decline every 17, a collapse every 151. Together they were 91% of the
+        chronicle, because the organic rules they were covering for could not
+        fire — their thresholds were written for trends and wired to single ticks
+        (see `resource_shift_threshold`). With those fixed, the world turns out to
+        be loud on its own: 2,424 real resource shifts and 1,095 real declines per
+        10,000 ticks, against the 951 and 588 the script was manufacturing. Both
+        beats are gone. The 17-tick one is the least missed — it announced a 14%
+        decline and never touched the population, so the chronicle was simply
+        wrong 588 times per run.
+
+        Collapse stays, because nothing collapses on its own yet: stability does
+        not answer to depletion, and the coupling that would make it answer costs
+        more than the world can pay (measured; see sira.md 23.6d). The event is
+        true — the region really does collapse — but its *cause* is this clock, so
+        the payload says `synthetic: true` and anything reading the chronicle for
+        patterns can exclude it rather than rediscover 151.
+        """
         tick = state.universe.tick
-        chronicle_rules = self.rules.chronicle
+        if tick % self.rules.chronicle.forced_collapse_interval != 0:
+            return
         region_rules = self.rules.region
-        if tick % chronicle_rules.forced_resource_shift_interval == 0:
-            region = self._select_region(state, "resource-shift", tick)
-            previous = region.resource_density
-            direction = "rise" if tick % chronicle_rules.forced_resource_rise_interval == 0 else "fall"
-            delta = (
-                region_rules.forced_resource_rise_delta
-                if direction == "rise"
-                else region_rules.forced_resource_fall_delta
-            )
-            region.resource_density = round(clamp(region.resource_density + delta), 3)
-            title, summary = event_templates.region_resource_shift(region, direction)
+        region = self._select_region(state, "collapse", tick)
+        region.stability = min(region.stability, region_rules.forced_collapse_stability)
+        region.resource_density = min(region.resource_density, region_rules.forced_collapse_resource)
+        if not region.collapsed:
+            region.collapsed = True
+            title, summary = event_templates.region_collapse(region)
             state.add_event(
-                EventType.REGION_RESOURCE_SHIFT,
+                EventType.REGION_COLLAPSE,
                 title,
                 summary,
-                severity=2 if direction == "rise" else 3,
+                severity=5,
                 region_id=region.id,
-                payload={"from": previous, "to": region.resource_density, "direction": direction},
+                payload={"synthetic": True},
             )
-
-        if tick % chronicle_rules.forced_decline_interval == 0 and state.species:
-            species = self._select_species(state, "decline", tick)
-            title, summary = event_templates.species_declined(
-                species,
-                chronicle_rules.forced_decline_percent,
-            )
-            state.add_event(
-                EventType.SPECIES_DECLINED,
-                title,
-                summary,
-                severity=2,
-                region_id=species.origin_region_id,
-                species_id=species.id,
-                payload={"decline_percent": chronicle_rules.forced_decline_percent},
-            )
-
-        if tick % chronicle_rules.forced_collapse_interval == 0:
-            region = self._select_region(state, "collapse", tick)
-            region.stability = min(region.stability, region_rules.forced_collapse_stability)
-            region.resource_density = min(region.resource_density, region_rules.forced_collapse_resource)
-            if not region.collapsed:
-                region.collapsed = True
-                title, summary = event_templates.region_collapse(region)
-                state.add_event(
-                    EventType.REGION_COLLAPSE,
-                    title,
-                    summary,
-                    severity=5,
-                    region_id=region.id,
-                )
 
     def _maybe_speciate(self, state: AlphaState) -> None:
         tick = state.universe.tick
@@ -521,6 +579,7 @@ class SimulationEngine:
             growth_rate=0.0,
             migration_pressure=0.0,
             last_updated_tick=state.universe.tick,
+            decline_reference_population=child_count,
         )
         title, summary = event_templates.mutation_detected(parent, region)
         state.add_event(
@@ -578,6 +637,7 @@ class SimulationEngine:
                 growth_rate=0.0,
                 migration_pressure=0.0,
                 last_updated_tick=state.universe.tick,
+                decline_reference_population=0,
             )
         state.populations[key].population_count += moving
 
@@ -727,11 +787,6 @@ class SimulationEngine:
         region_ids = sorted(state.regions)
         rng = stable_rng(state.seed, scope, tick)
         return state.regions[region_ids[rng.randrange(len(region_ids))]]
-
-    def _select_species(self, state: AlphaState, scope: str, tick: int) -> Species:
-        species_ids = sorted(state.species)
-        rng = stable_rng(state.seed, scope, tick)
-        return state.species[species_ids[rng.randrange(len(species_ids))]]
 
     def _next_species_name(self, state: AlphaState) -> str:
         index = len(state.species)

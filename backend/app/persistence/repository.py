@@ -65,6 +65,7 @@ from app.persistence.schema import (
     catalyst_action_logs,
     catalyst_actions,
     catalyst_user_roles,
+    diagnostics_runs,
     events,
     metadata,
     notification_reads,
@@ -174,6 +175,8 @@ class AlphaStateRepository:
                 stability_index=float(universe_row["stability_index"]),
                 chirality_ee=float(universe_row["chirality_ee"]),
                 homochirality_index=float(universe_row["homochirality_index"]),
+                local_order_index=float(universe_row["local_order_index"]),
+                domain_count=int(universe_row["domain_count"]),
                 chirality_locked=bool(universe_row["chirality_locked"]),
             ),
             regions={
@@ -188,6 +191,7 @@ class AlphaStateRepository:
                     stability=float(row["stability"]),
                     dominant_species_id=row["dominant_species_id"],
                     collapsed=bool(row["collapsed"]),
+                    last_reported_resource_density=float(row["last_reported_resource_density"]),
                     chirality_ee=float(row["chirality_ee"]),
                     chirality_locked=bool(row["chirality_locked"]),
                 )
@@ -218,6 +222,7 @@ class AlphaStateRepository:
                     growth_rate=float(row["growth_rate"]),
                     migration_pressure=float(row["migration_pressure"]),
                     last_updated_tick=int(row["last_updated_tick"]),
+                    decline_reference_population=int(row["decline_reference_population"]),
                 )
                 for row in population_rows
             },
@@ -364,6 +369,8 @@ class AlphaStateRepository:
                     "stability_index": state.universe.stability_index,
                     "chirality_ee": state.universe.chirality_ee,
                     "homochirality_index": state.universe.homochirality_index,
+                    "local_order_index": state.universe.local_order_index,
+                    "domain_count": state.universe.domain_count,
                     "chirality_locked": state.universe.chirality_locked,
                 },
             )
@@ -383,6 +390,7 @@ class AlphaStateRepository:
                         "stability": region.stability,
                         "dominant_species_id": region.dominant_species_id,
                         "collapsed": region.collapsed,
+                        "last_reported_resource_density": region.last_reported_resource_density,
                         "chirality_ee": region.chirality_ee,
                         "chirality_locked": region.chirality_locked,
                     },
@@ -418,6 +426,7 @@ class AlphaStateRepository:
                             "growth_rate": population.growth_rate,
                             "migration_pressure": population.migration_pressure,
                             "last_updated_tick": population.last_updated_tick,
+                            "decline_reference_population": population.decline_reference_population,
                         }
                         for population in state.populations.values()
                     ],
@@ -541,6 +550,50 @@ class AlphaStateRepository:
             "items": [dict(row) for row in rows],
             "total": total,
         }
+
+    def save_diagnostics_run(
+        self,
+        *,
+        universe_id: str,
+        kind: str,
+        seed: int,
+        ticks: int,
+        verdict: str,
+        duration_ms: float,
+        payload: dict,
+    ) -> None:
+        """Park the latest result for ``kind``, replacing any previous one.
+
+        Upsert rather than insert: the table is keyed on (universe_id, kind) so it
+        holds one row per diagnostic and never grows. Keeping a history would be a
+        separate, deliberate feature.
+        """
+        with self.engine.begin() as connection:
+            _upsert(
+                connection,
+                diagnostics_runs,
+                ["universe_id", "kind"],
+                {
+                    "universe_id": universe_id,
+                    "kind": kind,
+                    "seed": seed,
+                    "ticks": ticks,
+                    "verdict": verdict,
+                    "duration_ms": duration_ms,
+                    "payload": payload,
+                    "measured_at": datetime.now(UTC),
+                },
+            )
+
+    def diagnostics_run(self, kind: str, universe_id: str = "alpha") -> dict | None:
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                select(diagnostics_runs).where(
+                    diagnostics_runs.c.universe_id == universe_id,
+                    diagnostics_runs.c.kind == kind,
+                )
+            ).mappings().one_or_none()
+        return dict(row) if row is not None else None
 
     def compact_snapshots(self, universe_id: str = "alpha", *, budget: int | None = None) -> dict:
         """Drop up to SNAPSHOT_COMPACT_BATCH frames the current stride no longer keeps.
@@ -1688,6 +1741,8 @@ def _insert_snapshot(connection, state: AlphaState) -> None:
             "stability_index": state.universe.stability_index,
             "chirality_ee": state.universe.chirality_ee,
             "homochirality_index": state.universe.homochirality_index,
+            "local_order_index": state.universe.local_order_index,
+            "domain_count": state.universe.domain_count,
             "chirality_locked": state.universe.chirality_locked,
             "active_catalyst_actions": len(state.catalyst_actions),
             "region_snapshot_count": len(state.regions),

@@ -164,6 +164,36 @@ against ~13.3 billion rows/year unbounded.
 | `EVOVERSE_SNAPSHOT_COMPACT_BATCH` | `200` | Frames dropped per compaction call. |
 | `EVOVERSE_WORKER_COMPACT_EVERY_STEPS` | `30` | Worker steps between compaction sweeps. `0` disables. |
 
+## Diagnostics — one call that cannot be live
+
+`/universes/alpha/diagnostics` backs `/science`. Its live probes read current
+state and are cheap; the scale-free scan is not, and the gap is three orders of
+magnitude:
+
+| Call | Cost | Where it runs |
+|------|------|---------------|
+| `correlation_length` | 4.3 ms | per request |
+| `pattern_census` | 0.6 ms | per request |
+| `pattern_triggers` | 2.9 ms | per request |
+| **`scale_free_scan`** | **19 734 ms** | worker only |
+
+The scan re-seeds and replays the universe at four lattice sizes to ask whether ξ
+grows with L — the decisive criticality test. At ~20s of CPU it cannot be attached
+to a request: one page view would hold a worker for twenty seconds, and any
+concurrency would bury the box.
+
+So the worker runs it on a timer (`EVOVERSE_WORKER_SCAN_EVERY_STEPS`, ~2h at the
+default step) and upserts the result into `diagnostics_runs`. The API serves the
+cheap probes live and this row as a dated measurement, carrying the tick it was
+taken at. `scaleFree: null` is a real state — a universe nobody has scanned yet
+has no verdict, and the page renders the blank rather than implying one.
+
+`diagnostics_runs` is keyed on `(universe_id, kind)` and upserted, so it holds one
+row per diagnostic and cannot grow. Both other table families in this schema —
+logs and snapshots — were append-only with no retention and had to be bounded
+after they had already filled a disk. This one is bounded by its primary key from
+the start.
+
 ### Backlog — table partitioning
 
 `events_page` keeps a single growing table fast via indexes. When the table nears
@@ -181,6 +211,22 @@ With the loop flat, requirements are modest.
 | Runtime minimum (sim + API + Postgres) | 1 | 2 GB | 20 GB SSD | The app genuinely runs in this. |
 | **Recommended for Coolify** | **2** | **4 GB** | 40–80 GB SSD | The real constraint is the **Next.js build** (~1.5–2 GB); a 1 GB box OOMs at build and the deploy appears to "hang". |
 
-Disk over time (default unlimited retention): ~0.15 events/tick × 1 tick/2s ≈
-~6.5k events/day ≈ ~2.4M/year; with the index this stays fast, but set
+Disk over time (default unlimited retention): **~0.39 events/tick** × 1 tick/2s ≈
+**~17k events/day ≈ ~6.2M/year**; with the index this stays fast, but set
 `EVOVERSE_MAX_STORED_EVENTS` if you want a hard disk bound.
+
+> **This figure moved 2.5× and the reason is worth knowing.** It read ~0.15
+> events/tick (~2.4M/year) when the chronicle was 1,571 events per 10,000 ticks and
+> 91% of them were three scripted beats. Fixing the reporting resolution —
+> resource shifts and declines are now measured against what was last reported
+> rather than against the previous tick — did not add noise; it stopped the engine
+> ignoring real movement it could not see. The chronicle is now 3,911 events per
+> 10,000 ticks and 98% of them are the world's own. See
+> [`SIMULATION_FLOW_AND_FORMULAS.md` §8](SIMULATION_FLOW_AND_FORMULAS.md).
+>
+> Two consequences for whoever plans capacity: the **events-table partitioning**
+> backlog item arrives ~2.5× sooner than the note assumed, and the honest lever on
+> volume is now `resourceShiftThreshold` / `declinePopulationRatio` — they are
+> *reporting* thresholds and touch no dynamics, so raising them costs truth, not
+> behaviour. Re-derive the rate with `make benchmark` rather than trusting this
+> line; it is a snapshot of one tuning.

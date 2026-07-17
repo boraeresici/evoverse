@@ -20,7 +20,7 @@ Consumers should branch on `schemaVersion` and `eventType`. New optional fields 
 | `species_declined` | `decline_percent` |  | Population drop marker. |
 | `mutation_detected` |  | `child_species_id`, `trait_deltas`, `chiral_flip` | Bootstrap mutation signals may not create a child species. `chiral_flip` marks a rare, usually lethal handedness flip. |
 | `region_resource_shift` | `direction` | `from`, `to` | `direction` is `rise` or `fall`; bootstrap events may omit numeric bounds. |
-| `region_collapse` |  |  | Collapse state is available through the event row's region reference. |
+| `region_collapse` |  | `synthetic` | Collapse state is available through the event row's region reference. `synthetic: true` marks the one scripted beat left in the engine: the collapse is real, but a 151-tick clock caused it rather than the ecology, because nothing collapses on its own yet. Analysis over the chronicle should exclude these rather than rediscover the interval and report it as a finding. See `docs/SIMULATION_FLOW_AND_FORMULAS.md` §8. |
 | `catalyst_action` | `action_type`, `action_id`, `user_id` | `day_key` | `day_key` is added by the store for quota and audit correlation. |
 | `symmetry_break` | `scope` | `hand`, `hand_sign`, `homochirality_index` | `scope` is `region` (first molecular break), `lineage` (a species commits a hand), or `universe` (full homochirality). Universe scope carries no `regionId`. See `docs/CHIRALITY_AND_MIND.md`. |
 | `era_advanced` | `from_era`, `to_era` | `homochirality_index` | The universe crossed a maturity gate. Carries no `regionId`. See `docs/CHIRALITY_AND_MIND.md` §6.4. |

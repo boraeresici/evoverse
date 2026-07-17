@@ -93,7 +93,7 @@ Candidate fields, in preference order (why):
 |-------|--------|------|
 | `stability` | `region.stability` | continuous, never saturates — **best default** |
 | `energy_level` | `region.energy_level` | continuous, catalyst-perturbed |
-| `resource_density` | `region.resource_density` | continuous, has forced shocks |
+| `resource_density` | `region.resource_density` | continuous; **the only field life feeds back into** — populations draw it down, so it carries the ecology rather than just noise. The 13-tick scripted shock that used to punch it is gone |
 | `growth_rate` | mean of region's populations' `growth_rate` | the closest analogue to a *velocity* (rate of change) |
 | `chirality_ee` | `region.chirality_ee` | **saturates to ±1** once locked → poor for ξ in the ordered phase; useful only *during* symmetry breaking |
 
@@ -123,15 +123,42 @@ Normalise so `C(0) ≡ 1` by dividing through by the variance
 
 ### 3.3 The scale-free test (the actual answer to "yakalayabilir miyiz?")
 
-A single ξ means nothing on its own. Scale-free = **ξ scales with system size**. Run
-the *same seed/ticks* at a ladder of sizes and inspect how ξ moves:
+A single ξ means nothing on its own. Scale-free = **ξ scales with system size**. Run a
+ladder of sizes and inspect how ξ moves — and run the whole ladder under an **ensemble
+of seeds**, because a single seeded world cannot answer this:
 
 ```
 sizes = [(12,9), (16,12), (20,15), (24,18), (32,24)]   # L = max(width,height)
-for (w,h) in sizes:
-    state = seed_alpha(seed, width=w, height=h); advance(state, ticks)
-    ξ(L)  = correlation_length(state).xi
+for s in [seed, seed+1, ...]:                          # the ensemble
+    for (w,h) in sizes:
+        state = seed_alpha(s, width=w, height=h); advance(state, ticks)
+        ξ(L)  = correlation_length(state).xi
+    slope_s = least_squares_slope(L, ξ)                # one fit per member
+mean ± sd/√n over slope_s                              # what the verdict reads
 ```
+
+> **Why the ensemble is not optional.** Measured on this world: the slope of ξ against
+> L moves by **sd ≈ 0.09** from seed to seed with nothing else changed, while the band
+> between `sub_critical` (< 0.08) and `critical` (≥ 0.25) is only 0.17 wide. A
+> single-seed slope therefore has a standard error about as large as the distinction it
+> is being asked to make, and the pre-ensemble scan was reporting that coin flip as a
+> verdict (12 consecutive seeds returned `underpowered` ×7, `sub_critical` ×4,
+> `intermediate` ×1 — same rules, same ticks, different seed).
+>
+> This is also what the source does: Cavagna et al. establish ξ ≈ 0.35 L by fitting
+> across **24 separate flocking events** (122–4,268 birds), not by measuring one flock.
+> We took the estimator without the ensemble; this restores it.
+
+> **Cost, and why `ticks` is fixed.** Cost is `sizes × seeds × ticks`. `ticks` used to
+> be Alpha's live tick, which made the scan grow linearly and without bound as the
+> universe aged (~50s at tick 3.6k → ~12min at tick 50k → eventually longer than the
+> interval scheduling it). It bought nothing: Alpha is stationary from ~tick 250
+> (chirality locked, era gates passed), and ξ at tick 12,000 is ξ at 2,000 for 6× the
+> CPU. The scan asks whether the *rules* are scale-free, which is not a fact about
+> Alpha's age. Fixing depth at 2,000 makes cost constant forever and pays for the seed
+> axis: 4 sizes × 8 seeds × 2,000 ticks ≈ 4min, ~3% of a 2h cycle. The worker stores
+> both numbers — the row's `ticks` is the replay depth, `payload.universeTick` is
+> Alpha's age when it ran.
 
 > **Seeder constraint:** `seed_alpha` pins species origins to fixed region ids (up to
 > `region-101`), so worlds smaller than the default **12×9** cannot be seeded. The
@@ -139,18 +166,34 @@ for (w,h) in sizes:
 > unseedable size under `skipped` rather than crashing. (Making origins size-agnostic
 > is a separate seeder change, out of scope for this read-only diagnostic.)
 
-Verdicts:
+Verdicts. Every gate reads the ensemble's **95% CI**, not the point estimate — a
+regime is only named when the whole interval clears the threshold:
 
 | Observation | Regime | Meaning |
 |-------------|--------|---------|
-| `ξ ≈ const` (independent of L) | **sub-critical / disordered** | fixed patch size; no long-range order |
-| `ξ ≈ L/2`, and `C(r)` curves **collapse** onto one curve vs `r/L` | **critical — scale-free** ✅ | the slide's phenomenon: correlation spans the whole world at every size |
-| `ξ` saturates at L then `C(r)` stays positive (never crosses) | **super-critical / ordered** | one domain; the "flock flies together" / homochirality-locked case |
+| CI wholly `< 0.08` | **sub-critical / disordered** | fixed patch size; no long-range order |
+| CI wholly `≥ 0.25` **and** curves collapse | **critical — scale-free** ✅ | correlation spans the whole world at every size |
+| CI wholly inside `[0.08, 0.25)` | **intermediate** | ξ grows, but not with the world |
+| CI straddles a threshold | **inconclusive** | the run did not resolve it — a verdict a point estimate cannot give |
+| ≥ half the rungs majority-floored | **underpowered** | the slope is fitted through upper bounds, not measurements |
 
-The diagnostic returns `xi_over_L` for each size and a **`data_collapse_error`**
-(RMS spread of the `C(r/L)` curves); low spread + `xi_over_L ≈ const` ⇒ scale-free.
-This is a *number*, so criticality-tuning of `amplify_k` / `avalanche_bleed` can be
-scripted against it.
+There is deliberately **no `super_critical`**. It was specified here as "ξ saturates,
+`C(r)` never crosses", but the sum rule (§3.2) forbids that state for any field that
+varies at all — the branch could only fire on a field with zero variance, which is
+`degenerate`, not ordered. Removed in `72758ec`.
+
+`data_collapse_error` (RMS spread of the `C(r/L)` curves across **sizes**) is judged
+against `seed_noise` (the same spread across **seeds** at fixed size), and the verdict
+reads `collapse_ratio = collapse / noise`. Spread across sizes is only evidence of a
+size effect if it beats the spread the seed alone produces; at ratio ≈ 1 the sizes sit
+as close as noise allows, which is a collapse. The old gate was a bare
+`collapse_error <= 0.05`, which **never once fired** — across 20 measured runs the
+error ranged 0.0156–0.0348 and passed unconditionally, leaving `critical` resting on
+the slope alone. One seed has no noise floor, so its ratio is `None` and it cannot be
+called critical at all.
+
+These are *numbers*, so criticality-tuning of `amplify_k` / `avalanche_bleed` can be
+scripted against them — against the CI, not the point estimate.
 
 ---
 
@@ -331,9 +374,11 @@ def correlation_field(state, field: str, *, metric: str = "manhattan") -> dict:
 def correlation_length(state, *, fields=DEFAULT_FIELDS, metric="manhattan") -> dict:
     """ξ + C(r) for every field in `fields`."""
 
-def scale_free_scan(seed, ticks, *, sizes, field="stability") -> dict:
-    """Re-seed & advance at each (w,h); return ξ(L), xi_over_L, data_collapse_error,
-       and a verdict in {sub_critical, critical, super_critical}."""
+def scale_free_scan(seed, ticks, *, sizes, field="stability", seeds=1) -> dict:
+    """Replay the (w,h) ladder under `seeds` consecutive seeds; return per-size ξ with
+       its across-seed spread, slope {mean, sd, se, ci95}, data_collapse_error,
+       seed_noise, collapse_ratio, and a verdict in {sub_critical, critical,
+       intermediate, inconclusive, underpowered, degenerate, insufficient}."""
 
 def pattern_census(state) -> dict:
     """morphotypes, spatial_motifs, domain_size_powerlaw, lineage_motifs, event_ngrams;

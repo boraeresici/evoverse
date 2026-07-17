@@ -30,6 +30,16 @@ These inform Alpha's *chirality field* — a symmetry-breaking maturity mechanic
 - "On the origins of life's homochirality: inducing enantiomeric excess with spin-polarized electrons" (Ozturk & Sasselov — *PNAS*, 2022) and [Life's homochirality across a prebiotic network](https://www.pnas.org/doi/10.1073/pnas.2505126122) (*PNAS*, 2025): the spin-selectivity basis and network-level robustness. Full list on the author's [publications page](https://sukrufurkanozturk.owlstown.net/projects).
 - [Autopoiesis and Cognition](https://en.wikipedia.org/wiki/Autopoiesis) (Maturana & Varela, 1980) and Prof. Dr. Türker Kılıç's network-science ("bağlantısallık") framing: orientation for treating *thought* as life's information process folded back on itself — the second tier in the chirality-and-mind design.
 
+## Criticality and collective behaviour
+
+This is the source of Alpha's *reach* diagnostic on [`/science`](/science) — the correlation length ξ, its scaling against world size, and the sum rule the measurement is tested against. The repository design note `docs/CORRELATION_AND_PATTERNS.md` maps it onto the tick engine. Orientation points, not endorsements.
+
+- [Scale-free correlations in starling flocks](https://www.pnas.org/doi/abs/10.1073/pnas.1005766107) (Cavagna, Cimarelli, Giardina, Parisi, Santagati, Stefanini, Viale — *PNAS* 107(26):11865–11870, 2010; [PMC2900681](https://pmc.ncbi.nlm.nih.gov/articles/PMC2900681/), open preprint [arXiv:0911.4393](https://arxiv.org/abs/0911.4393) under the earlier title *Scale-free correlations in bird flocks*): fluctuations are mean-centred, correlated across a length ξ read off as the zero of C(r), and ξ is found to grow with the flock rather than sit at a fixed number of metres — the fingerprint of a system at a tipping point.
+
+Two things Alpha takes from it beyond the estimator. First, the **sum rule**: mean-centring forces ∑δφ = 0, which makes ∑ᵢ<ⱼ δφ(i)·δφ(j) strictly negative and so guarantees C(r) crosses zero for any field that varies at all. That turns "the curve crossed" from a finding into an exact identity the code can be held to, and `backend/tests/test_diagnostics.py` asserts it to fourteen decimals.
+
+Second, the **ensemble**. The scale-free claim in that paper is not a measurement of one flock: it is a line fitted through twenty-four separate flocking events spanning 122 to 4,268 birds, yielding ξ ≈ 0.35 L. Alpha's scan originally borrowed the estimator without the ensemble and fitted its trend through a single seeded world, where the seed alone moves the trend by ±0.09 — enough to reach either verdict. It now replays each size under a seed ensemble and reports the trend with its spread. The 0.25 threshold it must clear to be called scale-free sits deliberately below the flocks' own 0.35.
+
 ## Related writing
 
 - [Evoverse: Not Creating a World, but Witnessing One](https://medium.com/@eresicibora/evoverse-bir-d%C3%BCnyay%C4%B1-yaratmak-de%C4%9Fil-ona-tan%C4%B1kl%C4%B1k-etmek-b7be7bcf5f30): Essay by Bora ERESICI on Evoverse's observe-don't-command stance.

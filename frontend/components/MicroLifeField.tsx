@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Gauge,
   Info,
@@ -26,6 +26,7 @@ import {
   settleAgents,
   type LiveAgent
 } from "@/lib/microLifeLife";
+import { regionHandSign } from "@/lib/organismLens";
 import type { ChronicleEvent, DynamicReportData, RegionDetail } from "@/lib/types";
 
 type MicroLifeFieldProps = {
@@ -36,6 +37,20 @@ type MicroLifeFieldProps = {
   compact?: boolean;
   eyebrow?: string;
   title?: string;
+  /**
+   * The close-up this field opens into — the Organism Lens in practice
+   * (CHIRALITY_AND_MIND.md §8: the field is where "Inspect" lives). A slot
+   * rather than a prop of the Lens itself, so the field stays a general
+   * region view and never learns what a lineage's form is.
+   */
+  inspect?: ReactNode;
+  /**
+   * Hold the field still because the close-up in `inspect` is open. Two canvases
+   * animating at once compete for the same attention, and while an observer is
+   * reading a form the field is context, not the subject. The field is told only
+   * that it is quieted — never why — so it stays a general region view.
+   */
+  quieted?: boolean;
 };
 
 const modes: Array<{
@@ -55,7 +70,9 @@ export function MicroLifeField({
   compact = false,
   events,
   eyebrow = "Micro View",
+  inspect,
   populations,
+  quieted = false,
   region,
   report,
   title = "Life Field"
@@ -69,6 +86,7 @@ export function MicroLifeField({
   const [speedIndex, setSpeedIndex] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const handSign = regionHandSign(region);
   const [showLegend, setShowLegend] = useState(false);
   const projection = useMemo(
     () =>
@@ -82,6 +100,9 @@ export function MicroLifeField({
   );
   const reportBridge = useMemo(() => buildReportBridge(report), [report]);
   const speed = speeds[speedIndex];
+  // Three ways the field can be still: the observer paused it, the OS asks for
+  // reduced motion, or a close-up is open in front of it.
+  const animating = playing && !reducedMotion && !quieted;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -151,14 +172,14 @@ export function MicroLifeField({
 
     function loop(timestamp: number) {
       draw(timestamp, true);
-      if (playing && !reducedMotion) {
+      if (animating) {
         frameId = window.requestAnimationFrame(loop);
       }
     }
 
     const observer = new ResizeObserver(() => draw(performance.now(), false));
     observer.observe(activeShell);
-    if (playing && !reducedMotion) {
+    if (animating) {
       lastTsRef.current = performance.now();
       frameId = window.requestAnimationFrame(loop);
     } else {
@@ -171,13 +192,17 @@ export function MicroLifeField({
       observer.disconnect();
       window.cancelAnimationFrame(frameId);
     };
-  }, [events, mode, playing, projection, reducedMotion, region, speed, zoom]);
-
-  const effectivePlaying = playing && !reducedMotion;
+  }, [animating, events, mode, projection, region, speed, zoom]);
 
   return (
     <section
-      className={compact ? "micro-life-panel compact" : "micro-life-panel"}
+      className={[
+        "micro-life-panel",
+        compact ? "compact" : "",
+        quieted ? "quieted" : ""
+      ]
+        .filter(Boolean)
+        .join(" ")}
       aria-labelledby="micro-life-title"
     >
       <div className="micro-life-header">
@@ -187,12 +212,15 @@ export function MicroLifeField({
         </div>
         <div className="micro-life-actions" aria-label="Micro life controls">
           <button
-            aria-label={effectivePlaying ? "Pause life field" : "Play life field"}
+            aria-label={animating ? "Pause life field" : "Play life field"}
+            // Held still by the close-up, so the control that cannot restart it
+            // says so rather than looking broken when pressed.
+            disabled={quieted}
             onClick={() => setPlaying((value) => !value)}
-            title={effectivePlaying ? "Pause" : "Play"}
+            title={quieted ? "Held still while the form is open" : animating ? "Pause" : "Play"}
             type="button"
           >
-            {effectivePlaying ? (
+            {animating ? (
               <Pause size={16} aria-hidden="true" />
             ) : (
               <Play size={16} aria-hidden="true" />
@@ -269,9 +297,17 @@ export function MicroLifeField({
           <span>{projection.summary.agentCount} samples</span>
           <span>{projection.summary.speciesCount || 1} species</span>
           <span>{projection.summary.totalPopulation.toLocaleString()} aggregate population</span>
+          {handSign !== 0 ? (
+            <span className="micro-life-hand">
+              {handSign > 0 ? "Right-handed" : "Left-handed"}
+            </span>
+          ) : null}
           {report ? <span>Age {report.current.worldAge.toLocaleString()}</span> : null}
+          {quieted ? <span className="micro-life-quieted">Held still</span> : null}
         </div>
       </div>
+
+      {inspect ?? null}
 
       <div className="micro-life-stats" aria-label="Life field signals">
         <span>Energy {Math.round(region.energyLevel * 100)}%</span>
@@ -485,13 +521,19 @@ function drawAgents(
   mode: MicroLifeMode
 ) {
   const collapseFade = region.collapsed ? 0.42 : 1;
+  // Once a region latches, its agents circulate in the direction of its hand:
+  // the same fact the Lens draws as a coil, at the scale where a lineage is
+  // still only a scatter of dots. Before the latch this is 1 — a racemic region
+  // has no hand, so the field shows none (§8).
+  const spin = regionHandSign(region) || 1;
   for (const agent of agents) {
     const presence = easeLife(agent.life);
     const jitter = region.collapsed ? 0.005 : 0.015 + agent.growthRate * 0.8;
     const centerX = 0.5 + (agent.x - 0.5) * zoom;
     const centerY = 0.5 + (agent.y - 0.5) * zoom;
     const flowX = Math.sin(time + agent.phase) * jitter + agent.driftX * Math.sin(time * 0.18);
-    const flowY = Math.cos(time * 0.92 + agent.phase) * jitter + agent.driftY * Math.cos(time * 0.18);
+    const flowY =
+      Math.cos(time * 0.92 + agent.phase) * jitter * spin + agent.driftY * Math.cos(time * 0.18);
     const x = left + clamp01(centerX + flowX) * fieldSize;
     const y = top + clamp01(centerY + flowY) * fieldSize;
     const eventScale = 1 + projection.signals.mutation * 0.34 * Math.max(0, Math.sin(time * 2.4 + agent.phase));

@@ -21,6 +21,8 @@ def serialize_universe(state: AlphaState) -> dict:
         "stabilityIndex": round(state.universe.stability_index, 3),
         "chiralityEe": round(state.universe.chirality_ee, 4),
         "homochiralityIndex": round(state.universe.homochirality_index, 4),
+        "localOrderIndex": round(state.universe.local_order_index, 4),
+        "domainCount": state.universe.domain_count,
         "chiralityLocked": state.universe.chirality_locked,
     }
 

@@ -91,6 +91,8 @@ export function snapshotRegionToSummary(
     resourceDensity: row.resourceDensity,
     stability: row.stability,
     lifeIndex: clamp01(Math.log10(row.populationCount + 1) / 3.6),
+    chiralityEe: row.payload?.chirality_ee ?? 0,
+    chiralityLocked: row.payload?.chirality_locked ?? false,
     collapsed: row.collapsed,
     dominantSpeciesId: row.dominantSpeciesId,
     dominantSpeciesName: row.dominantSpeciesId
@@ -110,6 +112,8 @@ export function snapshotSpeciesToSummary(row: SnapshotSpeciesRow): SpeciesSummar
     emergedAtWorldAge: row.worldAge,
     generation: row.generation,
     parentSpeciesId: row.parentSpeciesId,
+    chirality: row.payload?.chirality ?? 0,
+    heterochiralLoad: row.payload?.heterochiral_load ?? 0,
     traits: row.traits ?? {},
     regions: [],
     forecast: {

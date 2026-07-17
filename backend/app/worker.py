@@ -12,6 +12,62 @@ from app.persistence import create_alpha_repository
 from app.services import AlphaStore
 
 
+SCALE_FREE_SIZES = [(12, 9), (16, 12), (20, 15), (24, 18)]
+
+
+def _run_scale_free_scan(
+    repository,
+    seed: int,
+    *,
+    scan_ticks: int,
+    seeds: int,
+    universe_tick: int,
+    worker_id: str,
+    step: int,
+) -> None:
+    """Measure the scale-free scan and park it. Never fails the loop.
+
+    A diagnostic that kills the simulation it is measuring is worse than no
+    diagnostic, so a scan that raises is logged and dropped — the previous row
+    stays and the page keeps reporting the last good measurement with its own
+    tick attached, which is honest either way.
+
+    ``scan_ticks`` is how deep each replayed world is advanced and is a property of
+    the experiment; ``universe_tick`` is how old Alpha was when the experiment ran
+    and is context. They used to be the same number, and collapsing them is what let
+    the scan's cost grow with the universe forever. Both are stored: the row's
+    ``ticks`` is the depth, and the payload carries the universe tick, so the page
+    can say what was measured and when without implying the two are one thing.
+    """
+    from app.simulation.diagnostics import scale_free_scan
+
+    started = time.perf_counter()
+    try:
+        scan = scale_free_scan(seed, int(scan_ticks), sizes=SCALE_FREE_SIZES, seeds=seeds)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+        print(f"worker_scan_failed step={step} worker={worker_id} error={exc}", flush=True)
+        return
+    duration_ms = (time.perf_counter() - started) * 1000
+    scan["universeTick"] = int(universe_tick)
+    repository.save_diagnostics_run(
+        universe_id="alpha",
+        kind="scale_free_scan",
+        seed=seed,
+        ticks=int(scan_ticks),
+        verdict=scan["verdict"],
+        duration_ms=round(duration_ms, 3),
+        payload=scan,
+    )
+    slope = scan["slope"]
+    print(
+        f"worker_scan step={step} worker={worker_id} scan_ticks={scan_ticks} "
+        f"seeds={len(scan['seeds'])} universe_tick={universe_tick} "
+        f"verdict={scan['verdict']} slope={slope['mean']}+-{slope['se']} "
+        f"duration_ms={duration_ms:.0f}",
+        flush=True,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Evoverse Alpha simulation worker.")
     parser.add_argument("--steps", type=int, default=None)
@@ -36,6 +92,9 @@ def main() -> None:
     interval = args.interval if args.interval is not None else settings.worker_interval_seconds
     max_steps = args.steps if args.steps is not None else settings.worker_max_steps
     compact_every_steps = settings.worker_compact_every_steps
+    scan_every_steps = settings.worker_scan_every_steps
+    scan_ticks = settings.worker_scan_ticks
+    scan_seeds = settings.worker_scan_seeds
     worker_id = args.worker_id or f"{socket.gethostname()}-{uuid4().hex[:8]}"
     repository.record_worker_run_event(
         worker_id=worker_id,
@@ -92,6 +151,21 @@ def main() -> None:
                         f"stride={compacted['stride']} frames_dropped={compacted['framesDropped']}",
                         flush=True,
                     )
+            # The scale-free scan is the one diagnostic a request can never run: it
+            # replays four universes under each of several seeds and takes minutes.
+            # Measuring it here and parking the row is what lets /science answer its
+            # own headline. The cost is fixed by scan_ticks rather than Alpha's tick,
+            # so this stays a constant slice of the loop however old the universe gets.
+            if scan_every_steps > 0 and step % scan_every_steps == 0:
+                _run_scale_free_scan(
+                    repository,
+                    settings.seed,
+                    scan_ticks=scan_ticks,
+                    seeds=scan_seeds,
+                    universe_tick=health["tick"],
+                    worker_id=worker_id,
+                    step=step,
+                )
         except Exception as exc:
             repository.record_worker_heartbeat(
                 worker_id=worker_id,

@@ -156,9 +156,17 @@ These were not free parameters left to chance. They were **tuned against a defau
 10,000-tick benchmark**: without equilibrium reversion and collapse recovery, long
 runs tended to collapse every region; without calming speciation and growth rates,
 species generation ran away after recovery. A representative benchmark run settles
-around 2 of 108 regions collapsed, roughly 73 species, and on the order of 162,000
+around 2 of 108 regions collapsed, roughly 73 species, and on the order of 74,000
 total population — a world that is neither dead nor exploding, which is exactly the
 regime a persistent observatory needs.
+
+That population figure used to read 162,000, and the difference is the point: it
+was never a ceiling, only where the run happened to be when the benchmark stopped.
+Nothing tied a population to the world it lived in — `energy_consumption` was
+computed and stored and read by nothing — so growth had no upper bound and simply
+kept going: 92k at 2,000 ticks, 162k at 10,000, 255k at 15,000. Regions now pay for
+the life they carry, and the number is bounded instead of merely young. See
+[`SIMULATION_FLOW_AND_FORMULAS.md` §3](SIMULATION_FLOW_AND_FORMULAS.md).
 
 ### Determinism and reproducibility
 

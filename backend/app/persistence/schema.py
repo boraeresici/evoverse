@@ -40,6 +40,8 @@ universes = Table(
     Column("stability_index", Numeric(6, 3), nullable=False),
     Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
     Column("homochirality_index", Numeric(6, 4), nullable=False, default=0),
+    Column("local_order_index", Numeric(6, 4), nullable=False, default=0),
+    Column("domain_count", Integer, nullable=False, default=0),
     Column("chirality_locked", Boolean, nullable=False, default=False),
 )
 
@@ -58,6 +60,7 @@ regions = Table(
     Column("collapsed", Boolean, nullable=False, default=False),
     Column("chirality_ee", Numeric(6, 4), nullable=False, default=0),
     Column("chirality_locked", Boolean, nullable=False, default=False),
+    Column("last_reported_resource_density", Numeric(6, 3), nullable=False, default=0),
 )
 
 species = Table(
@@ -86,6 +89,7 @@ populations = Table(
     Column("growth_rate", Numeric(8, 4), nullable=False),
     Column("migration_pressure", Numeric(8, 4), nullable=False),
     Column("last_updated_tick", BigInteger, nullable=False),
+    Column("decline_reference_population", Integer, nullable=False, default=0),
 )
 
 events = Table(
@@ -353,6 +357,19 @@ product_analytics_events = Table(
     Column("source", Text, nullable=False),
     Column("metadata", JSON, nullable=False, default=dict),
     Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+)
+
+diagnostics_runs = Table(
+    "diagnostics_runs",
+    metadata,
+    Column("universe_id", Text, ForeignKey("universes.id"), primary_key=True),
+    Column("kind", Text, primary_key=True),
+    Column("seed", Integer, nullable=False),
+    Column("ticks", BigInteger, nullable=False),
+    Column("verdict", Text, nullable=False),
+    Column("duration_ms", Numeric(10, 3), nullable=False),
+    Column("payload", JSON, nullable=False, default=dict),
+    Column("measured_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
 )
 
 worker_heartbeats = Table(

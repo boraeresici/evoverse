@@ -36,6 +36,9 @@ class Settings:
     worker_ticks_per_step: int
     worker_max_steps: int | None
     worker_compact_every_steps: int
+    worker_scan_every_steps: int
+    worker_scan_ticks: int
+    worker_scan_seeds: int
     allow_destructive_ops: bool
     worker_stale_seconds: float
     allow_local_admin: bool
@@ -75,6 +78,32 @@ def get_settings() -> Settings:
         # a pre-stride backlog, which is why it runs often enough to make progress
         # without a manual backfill. 0 disables it.
         worker_compact_every_steps=int(os.getenv("EVOVERSE_WORKER_COMPACT_EVERY_STEPS", "30")),
+        # How often the worker re-runs the scale-free scan, in steps. The scan
+        # replays four lattice sizes under each of several seeds and costs minutes
+        # of CPU, so it is not something a request can trigger — the worker measures
+        # it on a timer and the API serves the parked result. The default is ~2h at
+        # a 2s step: the verdict answers "has this universe started flocking", which
+        # moves on the scale of hours, not ticks. 0 disables it, leaving the last
+        # row in place.
+        worker_scan_every_steps=int(os.getenv("EVOVERSE_WORKER_SCAN_EVERY_STEPS", "3600")),
+        # How deep the scan replays each world, and how many seeds it replays it
+        # under. These two trade against each other for a fixed CPU budget, and the
+        # depth is the one worth giving up.
+        #
+        # Depth used to be Alpha's own tick, which made the scan cost grow linearly
+        # and without bound as the universe aged — ~50s at tick 3600, ~12min at tick
+        # 50k, eventually longer than the interval that schedules it. It bought
+        # nothing for that: the field is stationary from about tick 250 (chirality is
+        # locked, the era gates are long past), and ξ measured at tick 12,000 is the
+        # same ξ measured at 2,000 with six times the CPU. The scan asks whether the
+        # *rules* are scale-free, which is not a fact about how old Alpha is.
+        #
+        # Fixed depth makes the cost constant forever and pays for the seed axis,
+        # which is the one that was actually starving: ξ's slope against L moves by
+        # ±0.09 seed to seed, so one seed cannot tell "flat" (<0.08) from "scale-free"
+        # (>=0.25) at all. 8 seeds x 2000 ticks is ~4min per scan, ~3% of a 2h cycle.
+        worker_scan_ticks=int(os.getenv("EVOVERSE_WORKER_SCAN_TICKS", "2000")),
+        worker_scan_seeds=int(os.getenv("EVOVERSE_WORKER_SCAN_SEEDS", "8")),
         allow_destructive_ops=_as_bool(
             os.getenv("EVOVERSE_ALLOW_DESTRUCTIVE_OPS", "true" if env == "local" else "false")
         ),

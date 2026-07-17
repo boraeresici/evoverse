@@ -167,11 +167,18 @@ def _migration_states(
 
 
 def _execute_migration(connection: Connection, migration: Migration) -> None:
+    raw_connection = connection.connection.driver_connection
     if connection.dialect.name == "sqlite":
-        raw_connection = connection.connection.driver_connection
         raw_connection.executescript(migration.sql)
         return
-    connection.exec_driver_sql(migration.sql)
+    # Execute with no parameters at all. `exec_driver_sql` always hands psycopg an
+    # empty parameter sequence, which switches on placeholder scanning — and that
+    # scan is textual, so it does not know `--` starts a comment. A migration that
+    # merely *mentions* the modulo operator in prose (012's "tick % stride") dies
+    # with "incomplete placeholder: '%'". Migrations are static DDL and never take
+    # parameters, so there is nothing to interpolate.
+    with raw_connection.cursor() as cursor:
+        cursor.execute(migration.sql)
 
 
 def _database_url_from_args(value: str | None) -> str:

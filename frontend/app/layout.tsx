@@ -5,6 +5,7 @@ import {
   Activity,
   Bell,
   Columns3,
+  FlaskConical,
   GitBranch,
   KeyRound,
   Orbit,
@@ -84,6 +85,10 @@ export default function RootLayout({
             <Link href="/genesis">
               <Sparkles size={17} aria-hidden="true" />
               <span>Genesis</span>
+            </Link>
+            <Link href="/science">
+              <FlaskConical size={17} aria-hidden="true" />
+              <span>Science</span>
             </Link>
             <Link href="/reports">
               <Activity size={17} aria-hidden="true" />

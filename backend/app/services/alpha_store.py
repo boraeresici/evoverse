@@ -321,6 +321,48 @@ class AlphaStore:
             "event": _public_analytics_event(row),
         }
 
+    def diagnostics(self) -> dict:
+        """Criticality diagnostics for the /science page.
+
+        The three live probes read current state and cost ~8ms together. The
+        scale-free scan does not appear here as a live call — it replays four
+        lattice sizes from seed and takes ~20s — so it is read back from whatever
+        the worker last parked, carrying the tick it was measured at. If no scan
+        has run yet, ``scaleFree`` is null and the page says so rather than
+        implying a result.
+        """
+        from app.simulation.diagnostics import (
+            correlation_length,
+            pattern_census,
+            pattern_triggers,
+        )
+
+        with self._lock:
+            self._refresh()
+            state = self._state
+            correlation = correlation_length(state)
+            census = pattern_census(state)
+            triggers = pattern_triggers(state)
+            universe = {
+                "id": state.universe.id,
+                "tick": state.universe.tick,
+                "ageYears": state.universe.age_years,
+                "regions": len([r for r in state.regions.values() if not r.collapsed]),
+                "species": len(state.species),
+                "seed": self._seed,
+                "domainCount": state.universe.domain_count,
+            }
+
+        scan = self._repository.diagnostics_run("scale_free_scan") if self._repository else None
+        return {
+            "model": "diagnostics_v1",
+            "universe": universe,
+            "correlation": correlation,
+            "census": census,
+            "triggers": _public_trigger_summary(triggers),
+            "scaleFree": _public_scale_free(scan),
+        }
+
     def observability_summary(self) -> dict:
         # The state lock covers the universe summary only. The log aggregates below
         # scan whole log tables, and running them under _lock froze the simulation
@@ -3011,6 +3053,82 @@ def _paginate_snapshot_list(
     }
 
 
+# How many times a (pattern, condition) pair must be seen before its lift carries
+# any information. The gate lives here, not in the UI: raw lift rows are actively
+# misleading below it, and an API that ships them is one careless consumer away
+# from printing noise as discovery.
+#
+# The failure it guards is arithmetic, not bad luck. A motif seen once, under a
+# condition also seen once, gives P(M|C) = 1 and P(M) = 1/n, so lift = n exactly.
+# On Alpha at 1500 ticks that produces lift 30.0 from 30 instances and 16.0 from
+# 16 — the sample size wearing a discovery's clothes.
+MIN_TRIGGER_SUPPORT = 5
+
+
+def _public_trigger_summary(triggers: dict) -> dict:
+    """Trigger tables with the support gate applied and the arithmetic disclosed."""
+    families: dict[str, dict] = {}
+    for name, table in triggers["families"].items():
+        rows = table["table"]
+        instances = table.get("instances", 0)
+        families[name] = {
+            "instances": instances,
+            "rows": len(rows),
+            "singletonRows": sum(1 for row in rows if row["support"] == 1),
+            "topLift": rows[0]["lift"] if rows else None,
+            "topSupport": rows[0]["support"] if rows else None,
+            # lift == instances is the signature of the singleton artefact, not a
+            # coincidence; surfacing it lets the page show its own reasoning.
+            "topLiftEqualsInstances": bool(rows) and rows[0]["lift"] == float(instances),
+            "reportable": [
+                {
+                    "pattern": row["pattern"],
+                    "condition": row["condition"],
+                    "lift": row["lift"],
+                    "support": row["support"],
+                }
+                for row in rows
+                if row["support"] >= MIN_TRIGGER_SUPPORT
+            ],
+        }
+    return {
+        "mode": triggers["mode"],
+        "minSupport": MIN_TRIGGER_SUPPORT,
+        "families": families,
+    }
+
+
+def _public_scale_free(row: dict | None) -> dict | None:
+    """The worker's parked scan, or None if it has never run.
+
+    None is a real state the page must render — a universe that has not been
+    scanned yet has no verdict, and inventing one would be worse than a blank.
+    """
+    if row is None:
+        return None
+    payload = row["payload"] or {}
+    seeds = payload.get("seeds") or []
+    return {
+        "verdict": row["verdict"],
+        # The depth each replayed world was advanced to — the experiment's own
+        # parameter, not Alpha's age. ``universeTick`` is Alpha's age when it ran.
+        # Rows written before the two were separated have no universeTick, and the
+        # page renders that absence rather than guessing which one the number was.
+        "scanTicks": int(row["ticks"]),
+        "universeTick": payload.get("universeTick"),
+        "measuredAt": str(row["measured_at"]),
+        "durationMs": _float(row["duration_ms"]),
+        "field": payload.get("field"),
+        "seeds": len(seeds),
+        "points": payload.get("points", []),
+        "slope": payload.get("slope"),
+        "dataCollapseError": payload.get("dataCollapseError"),
+        "seedNoise": payload.get("seedNoise"),
+        "collapseRatio": payload.get("collapseRatio"),
+        "skipped": payload.get("skipped", []),
+    }
+
+
 def _pagination(*, total: int, limit: int, offset: int) -> dict:
     return {
         "limit": limit,
@@ -3089,6 +3207,8 @@ def _snapshot_details_from_state(state) -> dict:
                         min(1.0, region_population_totals.get(region.id, 0) / 26000),
                         3,
                     ),
+                    "chirality_ee": region.chirality_ee,
+                    "chirality_locked": region.chirality_locked,
                 },
                 "created_at": None,
             }
@@ -3110,6 +3230,8 @@ def _snapshot_details_from_state(state) -> dict:
                 "traits": item.traits.to_public(),
                 "payload": {
                     "emerged_at_world_age": item.emerged_at_world_age,
+                    "chirality": item.chirality,
+                    "heterochiral_load": item.heterochiral_load,
                 },
                 "created_at": None,
             }
