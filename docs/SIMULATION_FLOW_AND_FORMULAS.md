@@ -52,18 +52,22 @@ the same universe. $U(a,b)$ below denotes one such uniform draw.
 ([engine.py:51](../backend/app/simulation/engine.py#L51)). **Order matters** —
 each stage reads the state the previous stage just wrote.
 
+<!-- Node labels are quoted deliberately. Unquoted labels carrying non-ASCII (§, —, ·)
+     are a lexical error on mermaid 9 and older, which many markdown viewers still
+     pin; quoting parses on 9, 10 and 11 alike. Keep the quotes when editing. -->
+
 ```mermaid
 flowchart TD
-    A[tick += 1<br/>age_years += 1] --> B[_advance_regions<br/>§3 — E, R, S drift · collapse/recover]
-    B --> C[_advance_chirality<br/>§4 — ee bifurcation · avalanche · lineage adopt]
-    C --> D[_advance_populations<br/>§5 — habitat fit · growth · migration]
-    D --> E[_maybe_emit_scripted_collapse<br/>§8 — the one scripted beat left]
-    E --> F[_maybe_speciate<br/>§6 — mutation → child species]
-    F --> G[_update_species_statuses<br/>§7 — extinct/dominant/declining/…]
-    G --> H[_recalculate_dominant_species<br/>per-region argmax N]
-    H --> I[_update_universe_stability<br/>§7 — mean S − collapse penalty]
-    I --> J[_advance_era<br/>§7 — homochirality maturity gate]
-    J --> K[_expire_catalyst_actions<br/>drop actions past their TTL]
+    A["tick += 1<br/>age_years += 1"] --> B["_advance_regions<br/>§3 — E, R, S drift · consumer draw · collapse/recover"]
+    B --> C["_advance_chirality<br/>§4 — ee bifurcation · avalanche · lineage adopt"]
+    C --> D["_advance_populations<br/>§5 — habitat fit · growth · migration"]
+    D --> E["_maybe_emit_scripted_collapse<br/>§8 — the one scripted beat left"]
+    E --> F["_maybe_speciate<br/>§6 — mutation → child species"]
+    F --> G["_update_species_statuses<br/>§7 — extinct/dominant/declining/…"]
+    G --> H["_recalculate_dominant_species<br/>per-region argmax N"]
+    H --> I["_update_universe_stability<br/>§7 — mean S − collapse penalty"]
+    I --> J["_advance_era<br/>§7 — homochirality maturity gate"]
+    J --> K["_expire_catalyst_actions<br/>drop actions past their TTL"]
     K -->|next tick| A
 ```
 

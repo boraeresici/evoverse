@@ -393,6 +393,26 @@ Progression is **monotonic** (an era is never lost) and each transition emits on
 > `1.0` and was handed the Stabilization Era at tick 68. A gate that always passes
 > is not a gate; this one now discriminates.
 
+> ⚠️ **The Intelligence half of this gate still has the bug the Stabilization half
+> just lost. Do not build T2 on it as written.**
+>
+> `any(species.mind_locked)` is the *local* reading — it is `mean |ee|` one tier up.
+> One lineage thinks, and the whole universe is declared Intelligent. But T1's lesson
+> was precisely that **a domain is not homochirality**: the question a maturity gate
+> asks has to be global. And with the field on, `homochirality_index → 1.0` always,
+> so the `idx >= mind_gate_index` half is already vacuous — the gate reduces to
+> `any(...)` alone.
+>
+> The parallel repair is the obvious one: ask what *share of the biosphere* carries a
+> mind, population-weighted, the way `homochirality_index` asks what share of the map
+> agrees on a hand. It is not made here because nothing sets `mind_locked` yet, and
+> designing a gate for a tier that does not exist is how the first one went wrong —
+> §6.5 was written before anything could be measured against it. Whoever builds T2
+> should fix the gate in the same slice, and should read §6.6 first: T2 has to be a
+> model *of something*, and only `resource_density` carries any signal to model
+> (measured: local life correlates with resource level at −0.19, and with energy and
+> stability at +0.06 and +0.04 — i.e. nothing).
+
 ### 6.5 Cognitive homochirality (T2)
 
 Only runs once `universe.homochirality_index >= mind_gate_index`. For each
