@@ -234,8 +234,8 @@ export default function OrganismLensCanvas({ body, form, mode, hue }: OrganismLe
   if (failed) {
     return (
       <p className="lens-fallback">
-        This device cannot open a 3D view. The distribution field above still tracks this
-        lineage.
+        This device cannot open a 3D view, so this lineage&apos;s body plan stays unresolved.
+        The distribution field above still tracks it.
       </p>
     );
   }
@@ -247,5 +247,7 @@ export default function OrganismLensCanvas({ body, form, mode, hue }: OrganismLe
 
 function organismLabel(body: BodyParams, mode: LensMode): string {
   const hand = body.coilDirection === 0 ? "unhanded" : body.coilDirection > 0 ? "right" : "left";
-  return `A ${hand}-coiled organism with ${body.segments} segments and ${body.limbs} appendages, rendered in ${mode} mode.`;
+  // "Body plan", not "an organism": this is the lineage's type specimen, and a
+  // screen reader should not be told it is looking at one individual.
+  return `This lineage's body plan: a ${hand}-coiled form with ${body.segments} segments and ${body.limbs} appendages, rendered in ${mode} mode.`;
 }

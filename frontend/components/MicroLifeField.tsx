@@ -44,6 +44,13 @@ type MicroLifeFieldProps = {
    * region view and never learns what a lineage's form is.
    */
   inspect?: ReactNode;
+  /**
+   * Hold the field still because the close-up in `inspect` is open. Two canvases
+   * animating at once compete for the same attention, and while an observer is
+   * reading a form the field is context, not the subject. The field is told only
+   * that it is quieted — never why — so it stays a general region view.
+   */
+  quieted?: boolean;
 };
 
 const modes: Array<{
@@ -65,6 +72,7 @@ export function MicroLifeField({
   eyebrow = "Micro View",
   inspect,
   populations,
+  quieted = false,
   region,
   report,
   title = "Life Field"
@@ -92,6 +100,9 @@ export function MicroLifeField({
   );
   const reportBridge = useMemo(() => buildReportBridge(report), [report]);
   const speed = speeds[speedIndex];
+  // Three ways the field can be still: the observer paused it, the OS asks for
+  // reduced motion, or a close-up is open in front of it.
+  const animating = playing && !reducedMotion && !quieted;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -161,14 +172,14 @@ export function MicroLifeField({
 
     function loop(timestamp: number) {
       draw(timestamp, true);
-      if (playing && !reducedMotion) {
+      if (animating) {
         frameId = window.requestAnimationFrame(loop);
       }
     }
 
     const observer = new ResizeObserver(() => draw(performance.now(), false));
     observer.observe(activeShell);
-    if (playing && !reducedMotion) {
+    if (animating) {
       lastTsRef.current = performance.now();
       frameId = window.requestAnimationFrame(loop);
     } else {
@@ -181,13 +192,17 @@ export function MicroLifeField({
       observer.disconnect();
       window.cancelAnimationFrame(frameId);
     };
-  }, [events, mode, playing, projection, reducedMotion, region, speed, zoom]);
-
-  const effectivePlaying = playing && !reducedMotion;
+  }, [animating, events, mode, projection, region, speed, zoom]);
 
   return (
     <section
-      className={compact ? "micro-life-panel compact" : "micro-life-panel"}
+      className={[
+        "micro-life-panel",
+        compact ? "compact" : "",
+        quieted ? "quieted" : ""
+      ]
+        .filter(Boolean)
+        .join(" ")}
       aria-labelledby="micro-life-title"
     >
       <div className="micro-life-header">
@@ -197,12 +212,15 @@ export function MicroLifeField({
         </div>
         <div className="micro-life-actions" aria-label="Micro life controls">
           <button
-            aria-label={effectivePlaying ? "Pause life field" : "Play life field"}
+            aria-label={animating ? "Pause life field" : "Play life field"}
+            // Held still by the close-up, so the control that cannot restart it
+            // says so rather than looking broken when pressed.
+            disabled={quieted}
             onClick={() => setPlaying((value) => !value)}
-            title={effectivePlaying ? "Pause" : "Play"}
+            title={quieted ? "Held still while the form is open" : animating ? "Pause" : "Play"}
             type="button"
           >
-            {effectivePlaying ? (
+            {animating ? (
               <Pause size={16} aria-hidden="true" />
             ) : (
               <Play size={16} aria-hidden="true" />
@@ -285,6 +303,7 @@ export function MicroLifeField({
             </span>
           ) : null}
           {report ? <span>Age {report.current.worldAge.toLocaleString()}</span> : null}
+          {quieted ? <span className="micro-life-quieted">Held still</span> : null}
         </div>
       </div>
 

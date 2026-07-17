@@ -58,10 +58,14 @@ export function SpeciesExplorationPanel({
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // Owned here, not in the Lens: the field has to know to hold still while a
+  // form is open, and this is the nearest place that holds both.
+  const [lensOpen, setLensOpen] = useState(false);
 
   useEffect(() => {
     setSelectedIndex(0);
     setPlaying(false);
+    setLensOpen(false);
   }, [data.species.id]);
 
   useEffect(() => {
@@ -211,8 +215,16 @@ export function SpeciesExplorationPanel({
             compact
             events={timeline.map((item) => item.event)}
             eyebrow="Species Micro Replay"
-            inspect={<OrganismLens originRegion={originRegion} species={data.species} />}
+            inspect={
+              <OrganismLens
+                onOpenChange={setLensOpen}
+                open={lensOpen}
+                originRegion={originRegion}
+                species={data.species}
+              />
+            }
             populations={speciesProjection.populations}
+            quieted={lensOpen}
             region={speciesProjection.region}
             report={report}
             title="Distribution Field"

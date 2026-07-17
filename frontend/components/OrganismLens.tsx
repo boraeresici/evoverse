@@ -8,10 +8,20 @@
  * moment the shell mounts — and this shell sits on every species page. The
  * import is therefore gated behind `open`, so three (~150 KB gzipped) downloads
  * when an observer actually asks for a body, and never otherwise.
+ *
+ * What the Lens draws is a *type specimen*, not an individual: `deriveBodyParams`
+ * reads only species-scope state, and the engine has no individuals to read
+ * (mutation forks a new species rather than editing a live one — see
+ * `engine.py`'s speciation). The copy here says so, because a body that never
+ * changes while population climbs otherwise reads as a bug rather than as the
+ * division of labour it is: the field carries number and place, the Lens carries
+ * form. The caption deliberately does not claim the field *counts* this lineage —
+ * `serializers.py` truncates `species.regions` to the top 12, so the field's own
+ * total is short of `species.population` and the two would visibly disagree.
  */
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Lock, LoaderCircle, Maximize2, X } from "lucide-react";
 import { deriveBodyParams, deriveFormState, resolveLensMode } from "@/lib/organismLens";
 import type { RegionSummary, SpeciesSummary } from "@/lib/types";
@@ -32,6 +42,12 @@ const OrganismLensCanvas = dynamic(() => import("@/components/OrganismLensCanvas
 type OrganismLensProps = {
   species: SpeciesSummary;
   originRegion: RegionSummary | null;
+  /**
+   * Controlled by the page rather than held here: while a form is open the
+   * micro field stops animating behind it, and only the page owns both.
+   */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
 /** Stable per-lineage tint, mirroring how the micro field colours species. */
@@ -44,9 +60,12 @@ function speciesHue(id: string): number {
   return (hash >>> 0) % 360;
 }
 
-export function OrganismLens({ species, originRegion }: OrganismLensProps) {
-  const [open, setOpen] = useState(false);
-
+export function OrganismLens({
+  species,
+  originRegion,
+  open,
+  onOpenChange
+}: OrganismLensProps) {
   const lens = useMemo(
     () => resolveLensMode({ species, originRegion }),
     [species, originRegion]
@@ -70,19 +89,35 @@ export function OrganismLens({ species, originRegion }: OrganismLensProps) {
   }
 
   const hand = species.chirality > 0 ? "right" : species.chirality < 0 ? "left" : "unhanded";
+  const headcount = Math.max(0, Math.round(Number(species.population ?? 0)));
 
   return (
-    <div className="lens-shell">
+    <div className={open ? "lens-shell open" : "lens-shell"}>
       {open ? (
         <>
           <div className="lens-head">
-            <span className="eyebrow">Organism Lens</span>
-            <button className="secondary-action" onClick={() => setOpen(false)} type="button">
+            <span className="eyebrow">Lineage Form</span>
+            <button className="secondary-action" onClick={() => onOpenChange(false)} type="button">
               <X size={15} aria-hidden="true" />
               Close
             </button>
           </div>
           <OrganismLensCanvas body={body} form={form} mode={lens.mode} hue={hue} />
+          <p className="lens-caption">
+            {headcount > 0 ? (
+              <>
+                A type specimen: the one body plan shared by all{" "}
+                <strong>{headcount.toLocaleString()}</strong> individuals of this lineage. The
+                field above tracks where they are; this form shows what they are — so it holds
+                still as the population moves, and shifts only when the lineage itself does.
+              </>
+            ) : (
+              <>
+                A type specimen: this lineage&apos;s body plan, not one of its individuals. It
+                shifts only when the lineage itself does — never with its headcount.
+              </>
+            )}
+          </p>
           <dl className="lens-readout">
             <div>
               <dt>Hand</dt>
@@ -104,10 +139,10 @@ export function OrganismLens({ species, originRegion }: OrganismLensProps) {
           ) : null}
         </>
       ) : (
-        <button className="lens-open" onClick={() => setOpen(true)} type="button">
+        <button className="lens-open" onClick={() => onOpenChange(true)} type="button">
           <Maximize2 size={16} aria-hidden="true" />
           <span>
-            <strong>Inspect the organism</strong>
+            <strong>Inspect the lineage form</strong>
             <small>{lens.reason}</small>
           </span>
         </button>

@@ -5891,8 +5891,47 @@ p {
   display: block;
 }
 
+/* While a form is open the field behind it recedes: still, desaturated, and
+   visibly secondary, so the two canvases never compete for the same attention. */
+.micro-life-panel.quieted .micro-life-canvas-shell {
+  filter: saturate(0.55);
+  opacity: 0.62;
+  transition: filter 240ms ease, opacity 240ms ease;
+}
+
+.micro-life-panel.quieted .micro-life-mode-tabs {
+  opacity: 0.62;
+}
+
+.micro-life-quieted {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+/* The open Lens is the subject, not another panel row: it is lifted off the
+   field with its own ground and a rule tying it to the affordance above. */
 .lens-shell {
   margin-top: 12px;
+}
+
+.lens-shell.open {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(28, 34, 30, 0.08);
+  padding: 14px;
+}
+
+.lens-caption {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+
+.lens-caption strong {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .lens-head {
