@@ -55,7 +55,6 @@ class SimulationEngine:
             self._advance_regions(state)
             self._advance_chirality(state)
             self._advance_populations(state)
-            self._maybe_emit_scripted_collapse(state)
             self._maybe_speciate(state)
             self._update_species_statuses(state)
             self._recalculate_dominant_species(state)
@@ -159,6 +158,13 @@ class SimulationEngine:
                 + (rules.stability_equilibrium - region.stability)
                 * rules.stability_reversion_factor
             )
+            # Depletion spiral: a region drawn below the scarcity threshold loses
+            # stability in proportion to the shortfall, so collapse can now be an
+            # ecological consequence of over-consumption rather than a scripted clock.
+            depletion = max(
+                0.0, rules.stability_depletion_threshold - region.resource_density
+            )
+            stability_delta -= depletion * rules.stability_depletion_factor
             if region.collapsed:
                 stability_delta -= rules.collapsed_stability_penalty
                 energy_delta -= rules.collapsed_energy_penalty
@@ -363,6 +369,34 @@ class SimulationEngine:
             return 0.0
         return abs(region_ee)
 
+    def _stochastic_round(
+        self, value: float, state: AlphaState, population: Population
+    ) -> int:
+        """Round a projected headcount up or down with probability equal to its
+        fractional part, so E[count] = value.
+
+        `int(N(1+g))` truncates, and truncation is a rectifier at small N: it
+        erases every positive tick whose gain is under one whole individual
+        (N*g < 1, i.e. N < ~167 at the median g of 0.006) while rounding every
+        negative tick down to a full individual lost. A population below the
+        threshold could only ever fall, never climb — a habitat could be perfect
+        and it still would not grow. Stochastic rounding removes the bias: the
+        fractional individual is realised as a probability, deterministically
+        seeded so replays stay identical.
+        """
+        floor_value = math.floor(value)
+        fraction = value - floor_value
+        if fraction <= 0.0:
+            return floor_value
+        rng = stable_rng(
+            state.seed,
+            "growth-round",
+            population.species_id,
+            population.region_id,
+            state.universe.tick,
+        )
+        return floor_value + (1 if rng.random() < fraction else 0)
+
     def _advance_populations(self, state: AlphaState) -> None:
         rules = self.rules.population
         chirality_rules = self.rules.chirality
@@ -410,7 +444,9 @@ class SimulationEngine:
                 ),
                 3,
             )
-            next_count = int(previous_count * (1 + growth))
+            next_count = self._stochastic_round(
+                previous_count * (1 + growth), state, population
+            )
             population.population_count = max(0, next_count)
             population.last_updated_tick = state.universe.tick
 
@@ -452,46 +488,6 @@ class SimulationEngine:
                 state.species[species_id].heterochiral_load = round(
                     load_weighted[species_id] / total, 4
                 )
-
-    def _maybe_emit_scripted_collapse(self, state: AlphaState) -> None:
-        """The last scripted beat, and it is labelled as one.
-
-        This used to have three: a resource shift every 13 ticks, a species
-        decline every 17, a collapse every 151. Together they were 91% of the
-        chronicle, because the organic rules they were covering for could not
-        fire — their thresholds were written for trends and wired to single ticks
-        (see `resource_shift_threshold`). With those fixed, the world turns out to
-        be loud on its own: 2,424 real resource shifts and 1,095 real declines per
-        10,000 ticks, against the 951 and 588 the script was manufacturing. Both
-        beats are gone. The 17-tick one is the least missed — it announced a 14%
-        decline and never touched the population, so the chronicle was simply
-        wrong 588 times per run.
-
-        Collapse stays, because nothing collapses on its own yet: stability does
-        not answer to depletion, and the coupling that would make it answer costs
-        more than the world can pay (measured; see sira.md 23.6d). The event is
-        true — the region really does collapse — but its *cause* is this clock, so
-        the payload says `synthetic: true` and anything reading the chronicle for
-        patterns can exclude it rather than rediscover 151.
-        """
-        tick = state.universe.tick
-        if tick % self.rules.chronicle.forced_collapse_interval != 0:
-            return
-        region_rules = self.rules.region
-        region = self._select_region(state, "collapse", tick)
-        region.stability = min(region.stability, region_rules.forced_collapse_stability)
-        region.resource_density = min(region.resource_density, region_rules.forced_collapse_resource)
-        if not region.collapsed:
-            region.collapsed = True
-            title, summary = event_templates.region_collapse(region)
-            state.add_event(
-                EventType.REGION_COLLAPSE,
-                title,
-                summary,
-                severity=5,
-                region_id=region.id,
-                payload={"synthetic": True},
-            )
 
     def _maybe_speciate(self, state: AlphaState) -> None:
         tick = state.universe.tick
@@ -782,11 +778,6 @@ class SimulationEngine:
         for population in state.populations.values():
             totals[population.species_id] += population.population_count
         return dict(totals)
-
-    def _select_region(self, state: AlphaState, scope: str, tick: int) -> Region:
-        region_ids = sorted(state.regions)
-        rng = stable_rng(state.seed, scope, tick)
-        return state.regions[region_ids[rng.randrange(len(region_ids))]]
 
     def _next_species_name(self, state: AlphaState) -> str:
         index = len(state.species)

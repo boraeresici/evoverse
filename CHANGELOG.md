@@ -8,8 +8,91 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ## [Unreleased]
 
+### Changed
+
+- **Collapse is now organic, not a 151-tick clock.** The last scripted beat —
+  `_maybe_emit_scripted_collapse`, which forced a region's stability to 0.12 every 151
+  ticks and stamped the event `synthetic: true` — is deleted. It survived only because
+  stability had no downward channel: its lone depleting term was clamped to
+  ~0.00036/tick against a reversion to 0.58, so no region ever reached the 0.16 collapse
+  gate on its own. A new depletion→stability coupling (`RegionRules.stabilityDepletion*`,
+  threshold 0.22, factor 0.06) taxes stability in proportion to how far a region is drawn
+  below the scarcity threshold, so a heavily-consumed region spirals into collapse and
+  crosses the gate on a noise dip. Measured (20k ticks, base seed): **~10 organic
+  collapses at irregular ~600–2,600-tick gaps** (was 132 on a fixed 151 grid), the
+  chronicle is **100% organic** (no `synthetic` flag anywhere), and the world settles at
+  ~110k individuals / 140 species (82 non-extinct) — below the ~218k it carries
+  collapse-free, the real ecological cost of a collapse that now actually kills. The
+  0.06 factor was chosen on a measured tradeoff curve of collapse frequency vs living
+  diversity (0.08 culls to 31 live lineages; an aggressive 0.11 runaway-collapses the
+  world to ~1k). Removes the now-dead `ChronicleRules` and `RegionRules.forcedCollapse*`.
+- **Navbar splits primary surfaces from account controls.** The eleven top-level
+  links sat in one undifferentiated row. Auth, Admin and Guide are now icon-only and
+  grouped to the right behind a divider, so the primary surfaces (Chronicle … Species)
+  read as one cluster and the utility controls as another. Labels move to `title` +
+  `aria-label`, so nothing is lost to assistive tech.
+
 ### Fixed
 
+- **The home hero's live map rendered at zero height.** `MiniUniverseMap` never gave
+  `.universe-grid` a layout, and `.region-cell` is globally `position: absolute` (the
+  universe page's hex map places each cell itself) — so all 108 cells collapsed to a
+  0px-tall stack and the hero's entire right half read as empty. The mini-map now lays
+  its cells out on a real 12-wide lattice, each washed by its region's life/energy, so
+  the hero is anchored by the field it was always meant to show. The hex map is
+  untouched (the fix is scoped to `.map-shell`).
+- **"Active Lineages" listed extinct species.** The home strip sorted every species
+  alphabetically and took the first eight — extinct included, and never by prominence —
+  so dead lineages surfaced under an "Active" heading. It now excludes extinct species
+  and leads with the largest by population.
+- **Species and region event timelines ran the page for thousands of pixels.** Both
+  rendered every bundled event full-height (the species page reached ~16,000px). A
+  shared `EventTimeline` now shows eight with a "Show all N events" reveal and clamps
+  each card's summary to two lines.
+- **Single-snapshot report charts read as a flat trend, not "no trend yet".** A window
+  of one snapshot plotted a lone dot on flat gridlines beside a "±0" delta, so a
+  live metric looked static. The Dynamic Report and Replay charts now show an explicit
+  "needs at least two snapshots" note while keeping the current value in view.
+- **The Chronicle landed on all of history.** The feed defaulted to `all` and ran to
+  the 100-card render cap on load. It now opens on the most recent window (`now`), and
+  the time-filter tabs carry an active state (`aria-current`) so the default filtering
+  is visible rather than silent; observers widen with Last 24h / Last 7d / All History.
+- **Info-page prose columns hung a one-sided gap.** The Markdown article on Genesis,
+  Science, Purpose and Resources kept its readability cap but was left-aligned, so on
+  wide screens all the leftover width piled up on the right and read as broken. The
+  column is now centred, so the whitespace sits evenly and reads as intentional.
+
+- **Population growth was rectified downward by integer truncation.** `int(N(1+g))`
+  floors, and flooring is a rectifier at small `N`: it erased every positive tick whose
+  gain was under one whole individual (`N·g < 1`, i.e. `N < ~167` at the median
+  `g=0.006`) while rounding every loss down to a full individual — a small population
+  could only fall, never climb, no matter how good its habitat. It is now
+  deterministic **stochastic rounding** (fractional part = probability of rounding up),
+  restoring `E[N'] = N(1+g)`. Measured: total population **+49%** (62,214 → 92,737 at 20k
+  before the collapse change), and populations stop ratcheting to 1. Replay-identical.
+- **Delta rows read as absolute counts.** The Distribution/Life Field drift row and
+  the Dynamic Report metric cards show a *change* over the report window, but
+  `formatDelta` dropped the sign at zero — so an extinct species whose population
+  held steady rendered "Population 0" next to a header reading "12 population", as if
+  the two disagreed. The sign is now derived from the rounded magnitude and a
+  no-change reads "±0" / "±0pp" / "±0 pts", unmistakably a delta rather than a count.
+- **Phylogenetic tree labels collided.** `buildPhylogeny` centred each parent on its
+  children (`(min+max)/2`), so a single-child parent landed on its child's exact row —
+  two lifelines shared one `y` and their name labels rendered on top of each other
+  ("OLOS" over "THERA-21", "KARST-3" over "SOLEN-65"). Every node now takes its own
+  row in DFS pre-order, so each lineage is its own horizontal line.
+- **Status-strip tooltips were clipped into a broken block.** `.status-band { overflow:
+  hidden }` — present to trim the cell backgrounds to the band's rounded corners — also
+  sliced the InfoTip bubbles that pop above the top row, so the Alpha Age tip read as a
+  cut-off dark rectangle. The end cells are now rounded to the band directly (in both
+  the 5-column and 2-column layouts) and the clip is gone.
+- **Region page over-ran and mis-stacked.** The Region Events timeline rendered every
+  bundled event full-height (~25 cards, ~4000px); it now shows 8 with a "Show all N
+  events" reveal and clamps each summary to two lines. Population Composition stretched
+  its few bars to match the taller Related Species column, pinning them to the bottom
+  under a large empty gap; the grid now aligns to the start. The Life Field's
+  centred-square canvas left wide inert bands on its 16/9 shell; the shell is now 4/3,
+  cutting the dead width from ~44% to ~25%.
 - **Snapshot frame budget — the unbounded per-tick write.** `save_alpha` wrote a
   full snapshot set on every tick (~844 rows at Alpha's size, ~36M rows/day at the
   default 2s tick) with no retention. A production database reached ~64.7M

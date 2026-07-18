@@ -148,18 +148,17 @@ def test_the_chronicle_is_its_own_world_not_a_metronome() -> None:
     rules they covered for fired *zero* times in 10,000 ticks. Their thresholds
     described trends but were compared against the previous tick, which no world
     this slow can satisfy. Now the same thresholds are read against the last
-    reported value, and Alpha files its own news."""
+    reported value, and collapse answers to depletion, so Alpha files its own news
+    and no event is scripted."""
     state = seed_alpha(seed=4211)
     SimulationEngine(seed=4211).advance(state, ticks=2000)
     counts = Counter(event.event_type for event in state.events)
 
     assert counts[EventType.REGION_RESOURCE_SHIFT] > 100
     assert counts[EventType.SPECIES_DECLINED] > 100
-    # The scripted collapse is the only beat left, and it says so.
+    # No beat is left: nothing in the chronicle is a clock wearing an event's name.
     scripted = [e for e in state.events if e.payload.get("synthetic")]
-    assert all(e.event_type == EventType.REGION_COLLAPSE for e in scripted)
-    organic = [e for e in state.events if not e.payload.get("synthetic")]
-    assert len(organic) > 20 * len(scripted)  # the world out-talks the clock
+    assert scripted == []
 
 
 def test_a_reported_decline_is_one_the_population_actually_took() -> None:

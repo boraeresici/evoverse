@@ -61,8 +61,7 @@ flowchart TD
     A["tick += 1<br/>age_years += 1"] --> B["_advance_regions<br/>§3 — E, R, S drift · consumer draw · collapse/recover"]
     B --> C["_advance_chirality<br/>§4 — ee bifurcation · avalanche · lineage adopt"]
     C --> D["_advance_populations<br/>§5 — habitat fit · growth · migration"]
-    D --> E["_maybe_emit_scripted_collapse<br/>§8 — the one scripted beat left"]
-    E --> F["_maybe_speciate<br/>§6 — mutation → child species"]
+    D --> F["_maybe_speciate<br/>§6 — mutation → child species"]
     F --> G["_update_species_statuses<br/>§7 — extinct/dominant/declining/…"]
     G --> H["_recalculate_dominant_species<br/>per-region argmax N"]
     H --> I["_update_universe_stability<br/>§7 — mean S − collapse penalty"]
@@ -165,24 +164,30 @@ A fresh collapse emits `REGION_COLLAPSE`.
 **Constants** ([`RegionRules`](../backend/app/simulation/rules.py#L22)):
 $\bar E=0.56,\ \bar R=0.52,\ \bar S=0.58$; reversion $k_E=0.018,\ k_R=0.02,\ k_S=0.026$;
 collapse $S<0.16 \wedge R<0.18$; recovery $S\ge0.34, R\ge0.32, E\ge0.3$;
-consumptionPressureScale $=400{,}000$.
+consumptionPressureScale $=400{,}000$; depletion→stability threshold $=0.22$, factor $=0.06$.
 
-> **The collapse band is not reachable by drift.** Over 10,000 ticks on the base
-> seed, **not one** region collapses on its own. $S$'s equilibrium is $0.58$ and the
-> only term that could pull it down — the resource-pressure term above — is clamped
-> by `resourceStabilityBonusCap` $=0.02$ to a contribution of $0.00036$/tick, giving
-> $S^\ast=0.566$ for a region with *no resources at all*. So every collapse in the
-> chronicle is §8's scripted one, and it is labelled `synthetic: true` for exactly
-> that reason.
+> **Collapse is reachable — by depletion, not by a clock.** Stability's only downward
+> term used to be the resource-pressure one, clamped by `resourceStabilityBonusCap`
+> $=0.02$ to $0.00036$/tick against a reversion to $0.58$, so $S^\ast\approx0.57$ even
+> for a region with no resources — **not one** region collapsed on its own and every
+> collapse was a scripted 151-tick beat. The depletion→stability channel closes that
+> gap: a region drawn below `stabilityDepletionThreshold` $=0.22$ loses stability in
+> proportion to the shortfall (`stabilityDepletionFactor` $=0.06$), so a heavily-drawn
+> region spirals toward the collapse band and crosses it on a noise dip. Measured
+> (20,000 ticks, base seed): **~10 organic collapses at irregular gaps of ~600–2,600
+> ticks** — aperiodic, self-recovering, no metronome.
 >
-> This is the last scripted beat. The other two — resource shift and species decline
-> — looked like the same problem and were not: their thresholds were *reachable*, and
-> only the resolution was wrong (§3 above, §5). Fixing that deleted them. Collapse is
-> genuinely unreachable, and closing it needs the depletion→destabilisation coupling,
-> which is measured to cost more than the ecology can pay: collapse charges $-0.09$
-> growth against a median growth of $+0.006$, on a world whose median habitat fit sits
-> only $+0.044$ above the growth baseline, so every setting that produces organic
-> collapse also halves the population and the species count. See `sira.md` 23.6d.
+> The earlier reading — that any setting producing organic collapse also halves the
+> population — was taken *under the population floor bug* (`int(N(1+g))`, §5), which
+> biased every ecology number downward and made collapse look
+> unaffordable. With the floor replaced by stochastic rounding, the depletion channel
+> settles the world at **~110,000 individuals and 140 species (82 non-extinct)** while
+> making collapse real. It sits below the ~218,000 the same world carries collapse-free —
+> that gap is the honest ecological cost of a collapse that actually kills, not a bug.
+> The scripted beat and its `synthetic: true` payload are gone. The factor was chosen on
+> a measured tradeoff curve (collapse frequency vs living diversity): $0.06$ keeps 82 of
+> the world's lineages alive against 10 collapses per 20k ticks, where $0.08$ culls to 31
+> live lineages and an aggressive $0.11$ runaway-collapses the world to ~1,000.
 
 ## 4. Chirality — `_advance_chirality` (T1)
 
@@ -318,7 +323,13 @@ information:
 
 $$\text{if } m\ge\text{heterochiralLethalLoad}:\quad g \leftarrow \min(g,\ -\text{heterochiralLethalDecline})$$
 
-**Apply** (integer population): $\ N \leftarrow \max\!\big(0,\ \lfloor N(1+g)\rfloor\big)$.
+**Apply** (integer population): $\ N \leftarrow \max\!\big(0,\ \operatorname{stochRound}(N(1+g))\big)$,
+where $\operatorname{stochRound}(x)=\lfloor x\rfloor + \mathbb{1}[\,u < x-\lfloor x\rfloor\,]$ and $u$ is
+a deterministic per-$(\text{species},\text{region},\text{tick})$ draw. Plain truncation
+$\lfloor N(1+g)\rfloor$ was a rectifier at small $N$: it erased every positive tick with $Ng<1$
+(i.e. $N\lesssim167$ at the median $g=0.006$) while rounding every loss down to a whole individual,
+so a small population could only fall. Stochastic rounding restores $\mathbb{E}[N']=N(1+g)$ and stays
+replay-identical. Measured: the fix lifts total population ~49% and stops populations ratcheting to $1$.
 
 **Migration pressure** — poor fit plus mobility makes a population want to move:
 
@@ -451,7 +462,7 @@ is currently unreachable by design — see [§6.4](./CHIRALITY_AND_MIND.md).
 
 ---
 
-## 8. The one scripted beat — `_maybe_emit_scripted_collapse`
+## 8. The chronicle — how three scripted beats became none
 
 There used to be three: a resource shift every $13$ ticks, a species decline every
 $17$, a collapse every $151$. Together they wrote **91% of the chronicle** (1,423 of
@@ -461,24 +472,24 @@ trends and were compared against the previous tick (§3, §5), which no world dr
 $0.02$/tick can satisfy.
 
 Reading the same thresholds against the **last reported value** (§3) fixed the
-resolution rather than the number, and the world turned out to be loud: **2,579 real
-resource shifts and 1,120 real declines per 10,000 ticks**, against the 951 and 588
-the script was manufacturing. Both beats are deleted. The 17-tick one is the least
-missed: it announced a 14% decline and never touched the population — 588 lies per
-run, 61 of them about species that were already extinct and 257 about species that
-*grew* that tick.
+resolution rather than the number, and the world turned out to be loud: **2,738 real
+resource shifts and 1,668 real declines per 10,000 ticks**, against the 951 and 588
+the script was manufacturing. The 17-tick beat was the least missed: it announced a
+14% decline and never touched the population — 588 lies per run, 61 of them about
+species that were already extinct and 257 about species that *grew* that tick.
 
-**Collapse remains**, alone, because nothing collapses on its own yet: stability does
-not answer to depletion, and the coupling that would make it answer costs more than
-the ecology can pay (measured — see `sira.md` 23.6d). The event is true (the region
-really does collapse) but its *cause* is a clock, so its payload carries
-`synthetic: true`. Analysis over the chronicle — including
-[`CORRELATION_AND_PATTERNS.md`](./CORRELATION_AND_PATTERNS.md) — can exclude it
-rather than rediscover the number 151 and report it as a finding.
+**Collapse was the last to fall.** It survived alone for as long as nothing collapsed
+on its own — stability did not answer to depletion. Now it does: the depletion→stability
+channel (§3 constants) lets a heavily-drawn region spiral into the collapse band, so
+collapse is an ecological consequence of over-consumption, **aperiodic and
+self-recovering** (~5 per 10,000 ticks at irregular gaps). The `synthetic: true`
+payload is retired and the 151-tick clock deleted; analysis over the chronicle —
+including [`CORRELATION_AND_PATTERNS.md`](./CORRELATION_AND_PATTERNS.md) — no longer
+has a beat to exclude, because every collapse is real.
 
-The chronicle is now **3,911 events per 10,000 ticks, 98.3% of them organic** — 2.5×
-denser than when it was mostly scripted. Honesty cost visibility nothing; the script
-was covering for a blindfold, not for silence. Constant:
+The chronicle is now **~4,741 events per 10,000 ticks, 100% of them organic** — no
+scripted beat is left anywhere in the engine. Honesty cost visibility nothing; the
+script was covering for a blindfold, not for silence. Constant:
 [`ChronicleRules`](../backend/app/simulation/rules.py#L93).
 
 ---

@@ -17,7 +17,10 @@ export default async function ChroniclePage({
   }>;
 }) {
   const params = await searchParams;
-  const timeFilter = params.timeFilter ?? "all";
+  // Default to the most recent window rather than all history: the full feed runs
+  // to the render cap (100 cards) and lands as a wall. Observers can widen with the
+  // tabs; the active one is marked so the default filtering is never invisible.
+  const timeFilter = params.timeFilter ?? "now";
   const [data, regionsData, speciesData] = await Promise.all([
     getChronicle(timeFilter),
     getRegions(),
@@ -36,10 +39,21 @@ export default async function ChroniclePage({
         <h1>What Alpha Recorded</h1>
       </section>
       <div className="time-filters" aria-label="Time filters">
-        <a href="/chronicle?timeFilter=now">Now</a>
-        <a href="/chronicle?timeFilter=last_24h">Last 24h</a>
-        <a href="/chronicle?timeFilter=last_7d">Last 7d</a>
-        <a href="/chronicle?timeFilter=all">All History</a>
+        {[
+          { key: "now", label: "Now" },
+          { key: "last_24h", label: "Last 24h" },
+          { key: "last_7d", label: "Last 7d" },
+          { key: "all", label: "All History" }
+        ].map((tab) => (
+          <a
+            key={tab.key}
+            href={`/chronicle?timeFilter=${tab.key}`}
+            className={tab.key === timeFilter ? "active" : undefined}
+            aria-current={tab.key === timeFilter ? "true" : undefined}
+          >
+            {tab.label}
+          </a>
+        ))}
       </div>
       <ChronicleFilters
         events={data.events}

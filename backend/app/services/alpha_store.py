@@ -1303,14 +1303,29 @@ class AlphaStore:
                     serialize_event(event, self._state) for event in chronicle_preview
                 ],
                 "regions": self._map_regions(limit=108),
-                "species": [
-                    serialize_species(species, self._state)
-                    for species in sorted(
-                        self._state.species.values(),
-                        key=lambda item: item.name,
-                    )[:8]
-                ],
+                "species": self._active_lineages(limit=8),
             }
+
+    def _active_lineages(self, *, limit: int) -> list[dict]:
+        """The home strip is headed "Active Lineages", so it must exclude extinct
+        species and lead with the largest — the old query sorted every species
+        (extinct included) alphabetically, so it surfaced dead lineages by name."""
+        population_by_species: dict[str, int] = {}
+        for population in self._state.populations.values():
+            if population.population_count > 0:
+                population_by_species[population.species_id] = (
+                    population_by_species.get(population.species_id, 0)
+                    + population.population_count
+                )
+        living = [
+            species
+            for species in self._state.species.values()
+            if species.status.value != "extinct"
+        ]
+        living.sort(
+            key=lambda species: (-population_by_species.get(species.id, 0), species.name)
+        )
+        return [serialize_species(species, self._state) for species in living[:limit]]
 
     def _report_snapshot_page(
         self,

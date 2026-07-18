@@ -242,6 +242,9 @@ function MetricTrend({
   series: DynamicReportPoint[];
 }) {
   const chart = chartGeometry(series, metric.key);
+  // A window of one snapshot has nothing to plot — a single dot on flat gridlines
+  // reads as "flat trend" rather than "no trend yet". Say so instead.
+  const insufficient = series.length < 2 || chart.startAge === chart.endAge;
 
   return (
     <article
@@ -255,19 +258,27 @@ function MetricTrend({
         </div>
         <span>{formatDelta(delta[metric.key], metric)}</span>
       </header>
-      <svg aria-label={`${metric.label} trend`} role="img" viewBox="0 0 520 190">
-        <path className="chart-grid-line" d="M0 32 H520" />
-        <path className="chart-grid-line" d="M0 95 H520" />
-        <path className="chart-grid-line" d="M0 158 H520" />
-        <polyline className="chart-line" fill="none" points={chart.points} />
-        {chart.dots.map((dot) => (
-          <circle cx={dot.x} cy={dot.y} key={`${dot.x}-${dot.y}`} r="4.5" />
-        ))}
-      </svg>
-      <footer>
-        <span>Age {chart.startAge.toLocaleString()}</span>
-        <span>Age {chart.endAge.toLocaleString()}</span>
-      </footer>
+      {insufficient ? (
+        <p className="report-chart-empty">
+          Drift needs at least two snapshots — this window has one. The value above is current.
+        </p>
+      ) : (
+        <>
+          <svg aria-label={`${metric.label} trend`} role="img" viewBox="0 0 520 190">
+            <path className="chart-grid-line" d="M0 32 H520" />
+            <path className="chart-grid-line" d="M0 95 H520" />
+            <path className="chart-grid-line" d="M0 158 H520" />
+            <polyline className="chart-line" fill="none" points={chart.points} />
+            {chart.dots.map((dot) => (
+              <circle cx={dot.x} cy={dot.y} key={`${dot.x}-${dot.y}`} r="4.5" />
+            ))}
+          </svg>
+          <footer>
+            <span>Age {chart.startAge.toLocaleString()}</span>
+            <span>Age {chart.endAge.toLocaleString()}</span>
+          </footer>
+        </>
+      )}
     </article>
   );
 }
@@ -338,12 +349,15 @@ function formatDelta(
     return delta.to >= 1 ? "Collapsed in range" : "Recovered in range";
   }
 
-  const sign = delta.absolute > 0 ? "+" : "";
-  const absolute =
-    metric.format === "percent"
-      ? `${sign}${Math.round(delta.absolute * 100)} pts`
-      : `${sign}${Math.round(delta.absolute).toLocaleString()}`;
-  const relative = delta.percent === null ? "" : ` / ${sign}${delta.percent}%`;
+  // Sign from the rounded magnitude (not raw absolute), so a sub-unit change that
+  // rounds to nothing never shows a misleading "+0", and a genuine no-change reads
+  // as "±0" rather than a bare "0" that looks like an absolute reading.
+  const magnitude =
+    metric.format === "percent" ? Math.round(delta.absolute * 100) : Math.round(delta.absolute);
+  const sign = magnitude > 0 ? "+" : magnitude < 0 ? "-" : "±";
+  const body = Math.abs(magnitude).toLocaleString();
+  const absolute = metric.format === "percent" ? `${sign}${body} pts` : `${sign}${body}`;
+  const relative = delta.percent === null ? "" : ` / ${sign}${Math.abs(delta.percent)}%`;
   return `${absolute}${relative}`;
 }
 

@@ -249,7 +249,7 @@ function ReplayChart({
   const chart = chartGeometry(report?.series ?? [], "populationCount");
   const markers = markerGeometry(events, chart.startAge, chart.endAge);
 
-  if (!report || !report.series.length) {
+  if (!report || report.series.length < 2) {
     return <p className="species-chart-empty">Population chart is waiting for snapshot coverage.</p>;
   }
 

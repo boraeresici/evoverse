@@ -30,6 +30,22 @@ So the test now builds four sizes under eight seeds — thirty-two worlds — an
 
 Thirty-two worlds cost minutes, so the test does not run when you open this page. The worker measures it on a timer and this page reports what it last found. Each world is replayed to a fixed depth rather than to Alpha's present age, because Alpha settles early — its chirality locks within a few hundred ticks, and the reach at tick twelve thousand is the reach at two thousand for six times the work. The question is whether the *rules* flock, which is not a question about how old Alpha happens to be today. The page gives you both numbers anyway: how deep the test replayed, and how old Alpha was when it ran.
 
+## What the reach turns out to be
+
+The ensemble has run, and the answer is not close. Across thirty-two worlds — four sizes from a hundred and eight regions up to four hundred and thirty-two, eight seeds each — the reach barely moves: it sits near one to two regions at every size, and the trend against size comes back with a spread that straddles the line rather than falling cleanly on one side. By the test's own rule that reads as *did not settle it*. But the seed spread is not the whole reason, and here the phrase means something sharper than "measure more."
+
+Alpha's fields do not talk to their neighbours. A region's stability, energy, and resource each move on their own noise, pulled toward a world-wide average and drawn down by the life inside that one region — there is no term anywhere that couples a region to the one beside it. Without such a term the reach *cannot* grow with the map, because nothing carries a fluctuation from one region to the next. The measurement is not short of worlds; it is reading a length pinned at the grid's own doorstep by construction. Ten thousand regions would report the same one-to-two.
+
+So the honest answer is that Alpha, as written, does not flock — not "not yet," but *not with these rules*. The single term that would change it is a spatial coupling: let each region's field pull a little toward the average of its neighbours (a lattice Laplacian), and reach becomes something the coupling strength can tune — weak coupling, short reach; strong coupling, a reach that grows with the world the way a flock's does. That term is not in Alpha today. Adding it, then sweeping it to watch reach track the coupling, is what would turn this page from a null result into an experiment. Until then it reports an honest null: the rules do not flock, and the measurement says so cleanly.
+
+## Where Alpha does sit at a tipping point
+
+The reach test looked for a critical transition in space and found none. But Alpha has one — in a different variable. Its regions each carry a molecular *handedness*, and whether the whole world commits to a single hand turns on one control parameter: the strength of a symmetry-breaking field. Sweep that field across eight seeds and the world snaps between two regimes. At field strength zero, no world of the eight ever goes single-handed; nudge it to a small value and every one of the eight does. The map goes from a patchwork of opposing hands to one hand everywhere, and the crossover is sharp.
+
+The fingerprint the flock test was hunting for shows up here plainly: **critical slowing**. As you tune the world toward the edge of the transition, the time it takes a region to lock its hand stretches out — around 58 ticks well inside the committed regime, 69 nearer the edge, 81 nearer still, and then, past the critical point, never. A relaxation time that diverges as you approach a threshold is the textbook signature of a continuous transition, and Alpha reproduces it. So the honest scorecard is: Alpha does not flock in space, but it does sit at a genuine tipping point in its chirality — a phase transition with a control parameter, a sharp boundary, and critical slowing on approach.
+
+This one is measured offline rather than live — the sweep costs a few minutes across the seed ensemble, so it runs from `make sweep` and `make phase` rather than on page load. The full phase diagram, the mechanism, and the papers it maps onto are in the [chirality design note](/faq); the raw sweep lives in the repository.
+
 ## Why some numbers are missing
 
 Several statistics on this page can be computed and would not mean anything. Rather than print a confident-looking figure built on three observations, those panels leave the slot empty and say what is missing.

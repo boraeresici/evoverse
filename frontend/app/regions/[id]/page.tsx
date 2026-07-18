@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CatalystActions } from "@/components/CatalystActions";
 import { EmptyState } from "@/components/EmptyState";
-import { EventList } from "@/components/EventList";
+import { EventTimeline } from "@/components/EventTimeline";
 import { MicroLifeField } from "@/components/MicroLifeField";
 import { ObserverFollowControl } from "@/components/ObserverFollowControl";
 import { RegionInvestigationPanel } from "@/components/RegionInvestigationPanel";
@@ -92,7 +92,7 @@ export default async function RegionPage({
             <h2>Region Events</h2>
           </div>
         </div>
-        <EventList events={data.events} />
+        <EventTimeline events={data.events} />
       </section>
     </main>
   );

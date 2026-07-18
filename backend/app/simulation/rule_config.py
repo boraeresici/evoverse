@@ -10,7 +10,6 @@ from app.domain import CatalystActionType
 from app.simulation.rules import (
     CatalystRules,
     ChiralityRules,
-    ChronicleRules,
     DEFAULT_SIMULATION_RULES,
     PopulationRules,
     RegionRules,
@@ -28,7 +27,6 @@ SECTION_TYPES = {
     "region": RegionRules,
     "population": PopulationRules,
     "speciation": SpeciationRules,
-    "chronicle": ChronicleRules,
     "species_status": SpeciesStatusRules,
     "universe": UniverseRules,
     "chirality": ChiralityRules,
@@ -279,10 +277,8 @@ def _validate_semantics(
         errors.append(_error("region.recoveryStabilityThreshold", "Recovery stability must be above collapse stability."))
     if rules.region.recovery_resource_threshold <= rules.region.collapse_resource_threshold:
         errors.append(_error("region.recoveryResourceThreshold", "Recovery resource must be above collapse resource."))
-    if rules.region.forced_collapse_stability > rules.region.collapse_stability_threshold:
-        warnings.append(_warning("region.forcedCollapseStability", "Forced collapse stability is above the collapse threshold."))
-    if rules.region.forced_collapse_resource > rules.region.collapse_resource_threshold:
-        warnings.append(_warning("region.forcedCollapseResource", "Forced collapse resource is above the collapse threshold."))
+    if rules.region.stability_depletion_threshold <= rules.region.collapse_resource_threshold:
+        warnings.append(_warning("region.stabilityDepletionThreshold", "Depletion should engage before the resource collapse threshold, or organic collapse cannot form."))
     _validate_chirality_latch(rules.chirality, warnings)
     if rules.speciation.child_min_population > rules.speciation.candidate_min_population:
         errors.append(_error("speciation.childMinPopulation", "Child minimum population cannot exceed candidate minimum population."))
