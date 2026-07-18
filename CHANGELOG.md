@@ -76,11 +76,13 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   held steady rendered "Population 0" next to a header reading "12 population", as if
   the two disagreed. The sign is now derived from the rounded magnitude and a
   no-change reads "±0" / "±0pp" / "±0 pts", unmistakably a delta rather than a count.
-- **Phylogenetic tree labels collided.** `buildPhylogeny` centred each parent on its
-  children (`(min+max)/2`), so a single-child parent landed on its child's exact row —
-  two lifelines shared one `y` and their name labels rendered on top of each other
-  ("OLOS" over "THERA-21", "KARST-3" over "SOLEN-65"). Every node now takes its own
-  row in DFS pre-order, so each lineage is its own horizontal line.
+- **Phylogenetic tree labels collided.** A single-child parent centred on its one
+  child (`(min+max)/2`) landed on the child's exact row, so two labels rendered on top
+  of each other ("OLOS" over "THERA-21", "KARST-3" over "SOLEN-65"). The tidy layout is
+  kept — it stays compact and balanced around the lineage rather than staircasing every
+  node onto its own row (which made deep trees enormous and skewed them downward) — and
+  each node's single-line label is now placed above *or* below its lifeline by a greedy
+  pass, so same-row labels never overlap.
 - **Status-strip tooltips were clipped into a broken block.** `.status-band { overflow:
   hidden }` — present to trim the cell backgrounds to the band's rounded corners — also
   sliced the InfoTip bubbles that pop above the top row, so the Alpha Age tip read as a

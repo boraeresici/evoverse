@@ -4855,10 +4855,9 @@ p {
   fill: var(--brick);
 }
 
-.phylo-sublabel {
+.phylo-gen {
   fill: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .phylo-node.interactive {
