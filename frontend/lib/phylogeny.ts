@@ -112,20 +112,26 @@ export function buildPhylogeny(
   );
   roots.sort((a, b) => a.emergedAtWorldAge - b.emergedAtWorldAge);
 
-  // One row per node, in DFS pre-order: a parent takes the next free row, then its
-  // descendants stack directly below it. The earlier midpoint layout centered a
-  // parent on its children, but a single-child parent landed on `(min+max)/2` =
-  // the child's exact row — so two lifelines shared one `y` and their name labels
-  // rendered on top of each other ("OLOS" over "THERA-21"). Unique rows make every
-  // lineage its own horizontal line, which is what the axis copy already promises.
+  // Tidy layout: leaves take sequential rows, a parent centres on its children.
+  // This keeps the tree compact and balanced around the lineage rather than
+  // staircasing every node onto its own row (which made deep trees enormous and
+  // skewed the whole thing downward). A single-child chain collapses onto one row
+  // — correct, it *is* one lineage advancing through time — so the label pass in
+  // PhylogeneticTree spreads any labels that would collide, above vs below.
   const rowById = new Map<string, number>();
-  let nextRow = 0;
-  const assign = (id: string): void => {
-    rowById.set(id, nextRow);
-    nextRow += 1;
-    for (const kid of childrenInSet.get(id) ?? []) {
-      assign(kid.id);
+  let nextLeafRow = 0;
+  const assign = (id: string): number => {
+    const kids = childrenInSet.get(id) ?? [];
+    if (kids.length === 0) {
+      const row = nextLeafRow;
+      nextLeafRow += 1;
+      rowById.set(id, row);
+      return row;
     }
+    const kidRows = kids.map((kid) => assign(kid.id));
+    const row = (Math.min(...kidRows) + Math.max(...kidRows)) / 2;
+    rowById.set(id, row);
+    return row;
   };
   for (const root of roots) {
     assign(root.id);
@@ -166,7 +172,7 @@ export function buildPhylogeny(
     nodes,
     minAge,
     maxAge,
-    rows: Math.max(1, nextRow),
+    rows: Math.max(1, nextLeafRow),
     currentId: current.id,
     totalSpecies: allSpecies.length,
     shownSpecies: included.size

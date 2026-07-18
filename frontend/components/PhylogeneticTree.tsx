@@ -41,6 +41,10 @@ export function PhylogeneticTree({
 
   const axisTicks = buildAxisTicks(tree.minAge, tree.maxAge);
   const currentNode = tree.nodes.find((node) => node.isCurrent) ?? null;
+  // Compact layouts let a single-child chain share one row, so two labels can land
+  // at the same height. Decide per node whether its label sits above or below the
+  // lifeline so none overlap — the layout stays tight, the text stays legible.
+  const labelSides = resolveLabelSides(tree.nodes, xOf, yOf);
 
   return (
     <div className="phylo-tree">
@@ -161,6 +165,7 @@ export function PhylogeneticTree({
             node={node}
             x={xOf(node.startAge)}
             y={yOf(node.row)}
+            labelBelow={labelSides.get(node.species.id) === "below"}
             onOpen={
               node.isCurrent ? undefined : () => router.push(`/species/${node.species.id}`)
             }
@@ -175,16 +180,21 @@ function PhyloNodeMark({
   node,
   x,
   y,
+  labelBelow,
   onOpen
 }: {
   node: PhyloNode;
   x: number;
   y: number;
+  labelBelow: boolean;
   onOpen?: () => void;
 }) {
   const nearRight = x > VIEW_W - RIGHT_PAD;
   const labelX = nearRight ? x - 10 : x + 10;
   const anchor = nearRight ? "end" : "start";
+  // A single line per node (name + generation), so a label needs only one side of
+  // the lifeline — which is what lets above/below placement separate collisions.
+  const labelY = labelBelow ? y + 16 : y - 9;
   const interactive = Boolean(onOpen);
   return (
     <g
@@ -205,15 +215,52 @@ function PhyloNodeMark({
       <title>{`${node.species.name} · Gen ${node.species.generation} · ${node.species.status} · Age ${node.startAge.toLocaleString()}`}</title>
       {node.isCurrent ? <circle className="phylo-halo" cx={x} cy={y} r={9} /> : null}
       <circle className="phylo-dot" cx={x} cy={y} r={node.isCurrent ? 6 : 4.5} />
-      <text className="phylo-label" x={labelX} y={y - 8} textAnchor={anchor}>
-        {truncate(node.species.name, 18)}
-      </text>
-      <text className="phylo-sublabel" x={labelX} y={y + 14} textAnchor={anchor}>
-        G{node.species.generation}
-        {node.isAncestor ? " · ancestor" : ""}
+      <text className="phylo-label" x={labelX} y={labelY} textAnchor={anchor}>
+        {truncate(node.species.name, 16)}
+        <tspan className="phylo-gen"> · G{node.species.generation}</tspan>
       </text>
     </g>
   );
+}
+
+/**
+ * Greedy above/below assignment so no two node labels overlap. Nodes are placed
+ * left-to-right; each label prefers the space above its lifeline and drops below
+ * only if that would collide with one already placed. A label is one text line, so
+ * a node occupies just one side — leaving the other free for a same-row neighbour.
+ */
+function resolveLabelSides(
+  nodes: PhyloNode[],
+  xOf: (age: number) => number,
+  yOf: (row: number) => number
+): Map<string, "above" | "below"> {
+  const CHAR_W = 6.6;
+  const GAP = 6;
+  const LABEL_H = 15;
+  const placed: Array<{ x0: number; x1: number; y0: number; y1: number }> = [];
+  const sides = new Map<string, "above" | "below">();
+  const ordered = [...nodes].sort((a, b) => xOf(a.startAge) - xOf(b.startAge));
+  for (const node of ordered) {
+    const x = xOf(node.startAge);
+    const y = yOf(node.row);
+    const nearRight = x > VIEW_W - RIGHT_PAD;
+    const width =
+      (Math.min(node.species.name.length, 16) + String(node.species.generation).length + 4) *
+      CHAR_W;
+    const x0 = nearRight ? x - 10 - width : x + 10;
+    const x1 = nearRight ? x - 10 : x + 10 + width;
+    const box = (top: number) => ({ x0, x1, y0: top, y1: top + LABEL_H });
+    const above = box(y - 9 - LABEL_H);
+    const below = box(y + 6);
+    const hits = (b: { x0: number; x1: number; y0: number; y1: number }) =>
+      placed.some(
+        (p) => b.x0 < p.x1 + GAP && b.x1 + GAP > p.x0 && b.y0 < p.y1 && b.y1 > p.y0
+      );
+    const side = !hits(above) ? "above" : !hits(below) ? "below" : "above";
+    sides.set(node.species.id, side);
+    placed.push(side === "above" ? above : below);
+  }
+  return sides;
 }
 
 function lifelineClass(node: PhyloNode): string {
