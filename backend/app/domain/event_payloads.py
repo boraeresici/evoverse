@@ -31,12 +31,16 @@ EVENT_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
     },
     "region_collapse": {
         "required": (),
-        "optional": ("synthetic",),
+        "optional": (
+            "catalyst_action_ids",
+            "catalyst_user_ids",
+            "catalyst_action_types",
+        ),
         "description": (
-            "A region crossed collapse thresholds. `synthetic: true` marks the "
-            "scripted beat: the collapse is real, but a clock caused it rather "
-            "than the ecology, so analysis can exclude it instead of "
-            "rediscovering the interval."
+            "A region crossed the collapse thresholds — depletion drove its "
+            "stability and resource below the gate. Every collapse is organic and "
+            "aperiodic; the catalyst keys attribute it when a user action was "
+            "acting on the region at the time."
         ),
     },
     "catalyst_action": {

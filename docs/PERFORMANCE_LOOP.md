@@ -211,8 +211,8 @@ With the loop flat, requirements are modest.
 | Runtime minimum (sim + API + Postgres) | 1 | 2 GB | 20 GB SSD | The app genuinely runs in this. |
 | **Recommended for Coolify** | **2** | **4 GB** | 40–80 GB SSD | The real constraint is the **Next.js build** (~1.5–2 GB); a 1 GB box OOMs at build and the deploy appears to "hang". |
 
-Disk over time (default unlimited retention): **~0.39 events/tick** × 1 tick/2s ≈
-**~17k events/day ≈ ~6.2M/year**; with the index this stays fast, but set
+Disk over time (default unlimited retention): **~0.47 events/tick** × 1 tick/2s ≈
+**~20k events/day ≈ ~7.5M/year**; with the index this stays fast, but set
 `EVOVERSE_MAX_STORED_EVENTS` if you want a hard disk bound.
 
 > **This figure moved 2.5× and the reason is worth knowing.** It read ~0.15
@@ -220,9 +220,10 @@ Disk over time (default unlimited retention): **~0.39 events/tick** × 1 tick/2s
 > 91% of them were three scripted beats. Fixing the reporting resolution —
 > resource shifts and declines are now measured against what was last reported
 > rather than against the previous tick — did not add noise; it stopped the engine
-> ignoring real movement it could not see. The chronicle is now 3,911 events per
-> 10,000 ticks and 98% of them are the world's own. See
-> [`SIMULATION_FLOW_AND_FORMULAS.md` §8](SIMULATION_FLOW_AND_FORMULAS.md).
+> ignoring real movement it could not see. A later change retired the last scripted
+> beat (the 151-tick collapse) in favour of depletion-driven organic collapse, so the
+> chronicle is now ~4,741 events per 10,000 ticks and **100% of them are the world's
+> own**. See [`SIMULATION_FLOW_AND_FORMULAS.md` §8](SIMULATION_FLOW_AND_FORMULAS.md).
 >
 > Two consequences for whoever plans capacity: the **events-table partitioning**
 > backlog item arrives ~2.5× sooner than the note assumed, and the honest lever on

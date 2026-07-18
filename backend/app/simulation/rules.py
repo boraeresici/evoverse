@@ -74,13 +74,23 @@ class RegionRules:
     # yields ~2,650 per 10,000 ticks, about 25 per region — a notable resource event
     # every ~400 years of Alpha Age.
     resource_shift_threshold: float = 0.32
+    # Resource depletion -> stability. The existing resource_stability term is
+    # clamped to +/-0.02 around a 0.4 baseline, so its deepest pull is -0.00036/tick
+    # against a reversion to 0.58 — stability answers only to its own noise and the
+    # deepest a heavily-drawn region settles is ~0.36, never reaching
+    # collapse_stability_threshold (0.16). That is why nothing collapsed on its own
+    # and the 151-tick scripted beat was the only collapse Alpha had. This term adds
+    # an unclamped penalty once a region is drawn below stability_depletion_threshold,
+    # proportional to the shortfall, so a depletion spiral can trip the organic
+    # collapse gate. Sized (measured) so busy regions hover near collapse and cross
+    # it on a noise dip, not so every region flatlines. See sira.md for the sweep.
+    stability_depletion_threshold: float = 0.22
+    stability_depletion_factor: float = 0.06
     collapse_stability_threshold: float = 0.16
     collapse_resource_threshold: float = 0.18
     recovery_stability_threshold: float = 0.34
     recovery_resource_threshold: float = 0.32
     recovery_energy_threshold: float = 0.3
-    forced_collapse_stability: float = 0.12
-    forced_collapse_resource: float = 0.13
 
 
 @dataclass(frozen=True)
@@ -130,22 +140,13 @@ class SpeciationRules:
     resilience_delta_max: float = 0.1
 
 
-@dataclass(frozen=True)
-class ChronicleRules:
-    """The scripted beats. Only one is left.
-
-    A 13-tick resource shift and a 17-tick species decline used to live here too,
-    and between them they wrote 91% of the chronicle — not because the world is
-    quiet, but because the organic rules they stood in for had thresholds written
-    for trends and wired to single ticks, so those rules fired zero times. With the
-    resolution fixed the world reports 2,424 real shifts and 1,095 real declines per
-    10,000 ticks on its own, and both beats were deleted. See `resource_shift_threshold`.
-
-    Collapse survives only because nothing collapses on its own yet. It emits
-    `synthetic: true` so the chronicle does not pass a clock off as an ecology.
-    """
-
-    forced_collapse_interval: int = 151
+# The chronicle once had scripted beats — a 13-tick resource shift, a 17-tick species
+# decline, and a 151-tick collapse — that together wrote 91% of it, because the organic
+# rules they stood in for had thresholds written for trends and wired to single ticks.
+# The shift and decline were fixed by reading thresholds against the last reported value
+# (`resource_shift_threshold`); the collapse was retired once stability learned to answer
+# to depletion (`stability_depletion_*` in RegionRules). No `ChronicleRules` remain — the
+# chronicle is 100% organic. See docs/SIMULATION_FLOW_AND_FORMULAS.md §8.
 
 
 @dataclass(frozen=True)
@@ -225,7 +226,6 @@ class SimulationRules:
     region: RegionRules = field(default_factory=RegionRules)
     population: PopulationRules = field(default_factory=PopulationRules)
     speciation: SpeciationRules = field(default_factory=SpeciationRules)
-    chronicle: ChronicleRules = field(default_factory=ChronicleRules)
     species_status: SpeciesStatusRules = field(default_factory=SpeciesStatusRules)
     universe: UniverseRules = field(default_factory=UniverseRules)
     chirality: ChiralityRules = field(default_factory=ChiralityRules)
