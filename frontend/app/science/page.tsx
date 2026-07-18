@@ -8,7 +8,7 @@ import { getMarkdownPage } from "@/lib/markdown";
 export const metadata: Metadata = {
   title: "Science | Evoverse",
   description:
-    "Does Alpha flock? The same scale-free correlation measurement physicists ran on starling murmurations, applied to a simulated world — and what it can and cannot yet say."
+    "Does Alpha flock? The scale-free correlation measurement physicists ran on starling murmurations, applied to a simulated world — an honest null in space, and a genuine critical transition in its chirality."
 };
 
 export default async function SciencePage() {

@@ -18,7 +18,7 @@ export function StatusBand({ universe }: StatusBandProps) {
       label: "Era",
       value: universe.currentEra,
       icon: Activity,
-      tip: "The universe's current developmental phase (Genesis, Expansion, Stabilization, Intelligence)."
+      tip: "The universe's current developmental phase. Genesis → Expansion → Stabilization are reachable today; Intelligence is a designed future tier that has not shipped, so it is earned, not granted."
     },
     { label: "Active Species", value: universe.activeSpecies.toLocaleString(), icon: Dna },
     { label: "Regions", value: universe.regionCount.toLocaleString(), icon: Map },
