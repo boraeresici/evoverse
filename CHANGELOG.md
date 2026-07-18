@@ -16,15 +16,16 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   stability had no downward channel: its lone depleting term was clamped to
   ~0.00036/tick against a reversion to 0.58, so no region ever reached the 0.16 collapse
   gate on its own. A new depletion→stability coupling (`RegionRules.stabilityDepletion*`,
-  threshold 0.22, factor 0.08) taxes stability in proportion to how far a region is drawn
+  threshold 0.22, factor 0.06) taxes stability in proportion to how far a region is drawn
   below the scarcity threshold, so a heavily-consumed region spirals into collapse and
-  crosses the gate on a noise dip. Measured (20k ticks, base seed): **32 organic
-  collapses at irregular 11–2,737-tick gaps** (was 132 on a fixed 151 grid), the
+  crosses the gate on a noise dip. Measured (20k ticks, base seed): **~10 organic
+  collapses at irregular ~600–2,600-tick gaps** (was 132 on a fixed 151 grid), the
   chronicle is **100% organic** (no `synthetic` flag anywhere), and the world settles at
-  ~40k individuals / 134 species — below the ~92k it carries with collapse suppressed,
-  which is the real ecological cost of a collapse that now actually kills. Parameters
-  were chosen by sweep; an aggressive 0.11 factor runaway-collapsed the world to ~1k.
-  Removes the now-dead `ChronicleRules` and `RegionRules.forcedCollapse*` config.
+  ~110k individuals / 140 species (82 non-extinct) — below the ~218k it carries
+  collapse-free, the real ecological cost of a collapse that now actually kills. The
+  0.06 factor was chosen on a measured tradeoff curve of collapse frequency vs living
+  diversity (0.08 culls to 31 live lineages; an aggressive 0.11 runaway-collapses the
+  world to ~1k). Removes the now-dead `ChronicleRules` and `RegionRules.forcedCollapse*`.
 - **Navbar splits primary surfaces from account controls.** The eleven top-level
   links sat in one undifferentiated row. Auth, Admin and Guide are now icon-only and
   grouped to the right behind a divider, so the primary surfaces (Chronicle … Species)
@@ -48,6 +49,10 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   rendered every bundled event full-height (the species page reached ~16,000px). A
   shared `EventTimeline` now shows eight with a "Show all N events" reveal and clamps
   each card's summary to two lines.
+- **Single-snapshot report charts read as a flat trend, not "no trend yet".** A window
+  of one snapshot plotted a lone dot on flat gridlines beside a "±0" delta, so a
+  live metric looked static. The Dynamic Report and Replay charts now show an explicit
+  "needs at least two snapshots" note while keeping the current value in view.
 
 - **Population growth was rectified downward by integer truncation.** `int(N(1+g))`
   floors, and flooring is a rectifier at small `N`: it erased every positive tick whose

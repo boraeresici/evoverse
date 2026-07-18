@@ -242,6 +242,9 @@ function MetricTrend({
   series: DynamicReportPoint[];
 }) {
   const chart = chartGeometry(series, metric.key);
+  // A window of one snapshot has nothing to plot — a single dot on flat gridlines
+  // reads as "flat trend" rather than "no trend yet". Say so instead.
+  const insufficient = series.length < 2 || chart.startAge === chart.endAge;
 
   return (
     <article
@@ -255,19 +258,27 @@ function MetricTrend({
         </div>
         <span>{formatDelta(delta[metric.key], metric)}</span>
       </header>
-      <svg aria-label={`${metric.label} trend`} role="img" viewBox="0 0 520 190">
-        <path className="chart-grid-line" d="M0 32 H520" />
-        <path className="chart-grid-line" d="M0 95 H520" />
-        <path className="chart-grid-line" d="M0 158 H520" />
-        <polyline className="chart-line" fill="none" points={chart.points} />
-        {chart.dots.map((dot) => (
-          <circle cx={dot.x} cy={dot.y} key={`${dot.x}-${dot.y}`} r="4.5" />
-        ))}
-      </svg>
-      <footer>
-        <span>Age {chart.startAge.toLocaleString()}</span>
-        <span>Age {chart.endAge.toLocaleString()}</span>
-      </footer>
+      {insufficient ? (
+        <p className="report-chart-empty">
+          Drift needs at least two snapshots — this window has one. The value above is current.
+        </p>
+      ) : (
+        <>
+          <svg aria-label={`${metric.label} trend`} role="img" viewBox="0 0 520 190">
+            <path className="chart-grid-line" d="M0 32 H520" />
+            <path className="chart-grid-line" d="M0 95 H520" />
+            <path className="chart-grid-line" d="M0 158 H520" />
+            <polyline className="chart-line" fill="none" points={chart.points} />
+            {chart.dots.map((dot) => (
+              <circle cx={dot.x} cy={dot.y} key={`${dot.x}-${dot.y}`} r="4.5" />
+            ))}
+          </svg>
+          <footer>
+            <span>Age {chart.startAge.toLocaleString()}</span>
+            <span>Age {chart.endAge.toLocaleString()}</span>
+          </footer>
+        </>
+      )}
     </article>
   );
 }

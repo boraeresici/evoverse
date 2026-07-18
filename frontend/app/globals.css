@@ -2423,6 +2423,21 @@ p {
   width: 100%;
 }
 
+.report-chart-empty {
+  align-items: center;
+  background: #f8f4eb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  min-height: 190px;
+  padding: 16px;
+  text-align: center;
+}
+
 .chart-grid-line {
   stroke: #e8e1d4;
   stroke-width: 1;
