@@ -86,7 +86,20 @@ button {
 }
 
 .main-nav {
+  gap: 14px;
+}
+
+.nav-primary,
+.nav-utility {
+  align-items: center;
+  display: flex;
   gap: 6px;
+}
+
+/* Separate the account/guide icons from the primary surfaces with a rule + gap. */
+.nav-utility {
+  border-left: 1px solid var(--line);
+  padding-left: 14px;
 }
 
 .main-nav a,
@@ -97,6 +110,13 @@ button {
   gap: 7px;
   min-height: 38px;
   padding: 0 11px;
+}
+
+/* Icon-only utility controls: square hit area, no label. */
+.nav-icon {
+  justify-content: center;
+  min-width: 38px;
+  padding: 0;
 }
 
 .main-nav a:hover,
@@ -246,6 +266,33 @@ p {
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 14px;
+}
+
+/* The home hero's mini-map. `.region-cell` is globally position:absolute (the
+   universe page's hex map positions each cell itself), but this strip never gave
+   `.universe-grid` a layout — so all 108 cells collapsed to a 0px-tall stack and
+   the hero's right half read as empty. Here the grid is a real 12-wide lattice and
+   the cells flow statically, each washed by life/energy like the hex map. */
+.map-shell .universe-grid {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.map-shell .universe-grid .region-cell {
+  aspect-ratio: 1;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--green) calc(var(--life) * 82%), #e6e1d3),
+    color-mix(in srgb, var(--cyan) calc(var(--energy) * 58%), #f3eddd)
+  );
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.map-shell .universe-grid .region-cell.collapsed {
+  background: color-mix(in srgb, var(--brick) 46%, #efdad2);
 }
 
 .universe-explorer {

@@ -74,48 +74,52 @@ export default function RootLayout({
             <span>Evoverse</span>
           </Link>
           <nav className="main-nav" aria-label="Primary">
-            <Link href="/chronicle">
-              <RadioTower size={17} aria-hidden="true" />
-              <span>Chronicle</span>
-            </Link>
-            <Link href="/universe">
-              <Orbit size={17} aria-hidden="true" />
-              <span>Universe</span>
-            </Link>
-            <Link href="/genesis">
-              <Sparkles size={17} aria-hidden="true" />
-              <span>Genesis</span>
-            </Link>
-            <Link href="/science">
-              <FlaskConical size={17} aria-hidden="true" />
-              <span>Science</span>
-            </Link>
-            <Link href="/reports">
-              <Activity size={17} aria-hidden="true" />
-              <span>Reports</span>
-            </Link>
-            <Link href="/compare">
-              <Columns3 size={17} aria-hidden="true" />
-              <span>Compare</span>
-            </Link>
-            <Link href="/species/sp-0001">
-              <GitBranch size={17} aria-hidden="true" />
-              <span>Species</span>
-            </Link>
-            <Link href="/notifications" aria-label="Notifications">
-              <Bell size={17} aria-hidden="true" />
-            </Link>
-            {/* Auth-state-dependent routes: never prefetch, so a logged-out
-                prefetch can't cache a session-less view that survives sign-in. */}
-            <Link href="/auth" prefetch={false}>
-              <KeyRound size={17} aria-hidden="true" />
-              <span>Auth</span>
-            </Link>
-            <Link href="/admin/config" prefetch={false}>
-              <SlidersHorizontal size={17} aria-hidden="true" />
-              <span>Admin</span>
-            </Link>
-            <UsageModal />
+            <div className="nav-primary">
+              <Link href="/chronicle">
+                <RadioTower size={17} aria-hidden="true" />
+                <span>Chronicle</span>
+              </Link>
+              <Link href="/universe">
+                <Orbit size={17} aria-hidden="true" />
+                <span>Universe</span>
+              </Link>
+              <Link href="/genesis">
+                <Sparkles size={17} aria-hidden="true" />
+                <span>Genesis</span>
+              </Link>
+              <Link href="/science">
+                <FlaskConical size={17} aria-hidden="true" />
+                <span>Science</span>
+              </Link>
+              <Link href="/reports">
+                <Activity size={17} aria-hidden="true" />
+                <span>Reports</span>
+              </Link>
+              <Link href="/compare">
+                <Columns3 size={17} aria-hidden="true" />
+                <span>Compare</span>
+              </Link>
+              <Link href="/species/sp-0001">
+                <GitBranch size={17} aria-hidden="true" />
+                <span>Species</span>
+              </Link>
+            </div>
+            {/* Utility actions: icon-only, split off to the right so the primary
+                surfaces read as one group and the account/guide controls as another. */}
+            <div className="nav-utility">
+              <Link className="nav-icon" href="/notifications" aria-label="Notifications" title="Notifications">
+                <Bell size={17} aria-hidden="true" />
+              </Link>
+              {/* Auth-state-dependent routes: never prefetch, so a logged-out
+                  prefetch can't cache a session-less view that survives sign-in. */}
+              <Link className="nav-icon" href="/auth" prefetch={false} aria-label="Sign in" title="Sign in">
+                <KeyRound size={17} aria-hidden="true" />
+              </Link>
+              <Link className="nav-icon" href="/admin/config" prefetch={false} aria-label="Admin" title="Admin">
+                <SlidersHorizontal size={17} aria-hidden="true" />
+              </Link>
+              <UsageModal />
+            </div>
           </nav>
         </header>
         {children}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { GitBranch, Star } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
-import { EventList } from "@/components/EventList";
+import { EventTimeline } from "@/components/EventTimeline";
 import { ForecastPanel } from "@/components/ForecastPanel";
 import { ObserverFollowControl } from "@/components/ObserverFollowControl";
 import { PageHelp } from "@/components/PageHelp";
@@ -139,7 +139,7 @@ export default async function SpeciesPage({
             <h2>Species Events</h2>
           </div>
         </div>
-        <EventList events={data.events} />
+        <EventTimeline events={data.events} />
       </section>
     </main>
   );

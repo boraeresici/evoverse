@@ -5,16 +5,16 @@ import { ChevronDown } from "lucide-react";
 import { EventList } from "@/components/EventList";
 import type { ChronicleEvent } from "@/lib/types";
 
-// The region payload already carries the full window of events, so "show more" is
-// a pure client reveal — no extra fetch. We render a short head by default so the
-// timeline doesn't run the page to several thousand pixels on busy regions.
+// The detail payload already carries the full window of events, so "show more" is a
+// pure client reveal — no extra fetch. We render a short head by default so the
+// timeline doesn't run the page to several thousand pixels on busy regions/lineages.
 const INITIAL_COUNT = 8;
 
-type RegionTimelineProps = {
+type EventTimelineProps = {
   events: ChronicleEvent[];
 };
 
-export function RegionTimeline({ events }: RegionTimelineProps) {
+export function EventTimeline({ events }: EventTimelineProps) {
   const [expanded, setExpanded] = useState(false);
   const hasOverflow = events.length > INITIAL_COUNT;
   const visible = expanded ? events : events.slice(0, INITIAL_COUNT);

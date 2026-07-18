@@ -76,13 +76,12 @@ export function UsageModal() {
     <>
       <button
         aria-label="Open basic guide"
-        className="usage-help-button"
+        className="usage-help-button nav-icon"
         onClick={() => setOpen(true)}
-        title="Basic guide"
+        title="Guide"
         type="button"
       >
         <HelpCircle size={17} aria-hidden="true" />
-        <span>Guide</span>
       </button>
 
       {open && mounted

@@ -8,8 +8,55 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ## [Unreleased]
 
+### Changed
+
+- **Collapse is now organic, not a 151-tick clock.** The last scripted beat —
+  `_maybe_emit_scripted_collapse`, which forced a region's stability to 0.12 every 151
+  ticks and stamped the event `synthetic: true` — is deleted. It survived only because
+  stability had no downward channel: its lone depleting term was clamped to
+  ~0.00036/tick against a reversion to 0.58, so no region ever reached the 0.16 collapse
+  gate on its own. A new depletion→stability coupling (`RegionRules.stabilityDepletion*`,
+  threshold 0.22, factor 0.08) taxes stability in proportion to how far a region is drawn
+  below the scarcity threshold, so a heavily-consumed region spirals into collapse and
+  crosses the gate on a noise dip. Measured (20k ticks, base seed): **32 organic
+  collapses at irregular 11–2,737-tick gaps** (was 132 on a fixed 151 grid), the
+  chronicle is **100% organic** (no `synthetic` flag anywhere), and the world settles at
+  ~40k individuals / 134 species — below the ~92k it carries with collapse suppressed,
+  which is the real ecological cost of a collapse that now actually kills. Parameters
+  were chosen by sweep; an aggressive 0.11 factor runaway-collapsed the world to ~1k.
+  Removes the now-dead `ChronicleRules` and `RegionRules.forcedCollapse*` config.
+- **Navbar splits primary surfaces from account controls.** The eleven top-level
+  links sat in one undifferentiated row. Auth, Admin and Guide are now icon-only and
+  grouped to the right behind a divider, so the primary surfaces (Chronicle … Species)
+  read as one cluster and the utility controls as another. Labels move to `title` +
+  `aria-label`, so nothing is lost to assistive tech.
+
 ### Fixed
 
+- **The home hero's live map rendered at zero height.** `MiniUniverseMap` never gave
+  `.universe-grid` a layout, and `.region-cell` is globally `position: absolute` (the
+  universe page's hex map places each cell itself) — so all 108 cells collapsed to a
+  0px-tall stack and the hero's entire right half read as empty. The mini-map now lays
+  its cells out on a real 12-wide lattice, each washed by its region's life/energy, so
+  the hero is anchored by the field it was always meant to show. The hex map is
+  untouched (the fix is scoped to `.map-shell`).
+- **"Active Lineages" listed extinct species.** The home strip sorted every species
+  alphabetically and took the first eight — extinct included, and never by prominence —
+  so dead lineages surfaced under an "Active" heading. It now excludes extinct species
+  and leads with the largest by population.
+- **Species and region event timelines ran the page for thousands of pixels.** Both
+  rendered every bundled event full-height (the species page reached ~16,000px). A
+  shared `EventTimeline` now shows eight with a "Show all N events" reveal and clamps
+  each card's summary to two lines.
+
+- **Population growth was rectified downward by integer truncation.** `int(N(1+g))`
+  floors, and flooring is a rectifier at small `N`: it erased every positive tick whose
+  gain was under one whole individual (`N·g < 1`, i.e. `N < ~167` at the median
+  `g=0.006`) while rounding every loss down to a full individual — a small population
+  could only fall, never climb, no matter how good its habitat. It is now
+  deterministic **stochastic rounding** (fractional part = probability of rounding up),
+  restoring `E[N'] = N(1+g)`. Measured: total population **+49%** (62,214 → 92,737 at 20k
+  before the collapse change), and populations stop ratcheting to 1. Replay-identical.
 - **Delta rows read as absolute counts.** The Distribution/Life Field drift row and
   the Dynamic Report metric cards show a *change* over the report window, but
   `formatDelta` dropped the sign at zero — so an extinct species whose population
