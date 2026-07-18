@@ -10,6 +10,29 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ### Fixed
 
+- **Delta rows read as absolute counts.** The Distribution/Life Field drift row and
+  the Dynamic Report metric cards show a *change* over the report window, but
+  `formatDelta` dropped the sign at zero — so an extinct species whose population
+  held steady rendered "Population 0" next to a header reading "12 population", as if
+  the two disagreed. The sign is now derived from the rounded magnitude and a
+  no-change reads "±0" / "±0pp" / "±0 pts", unmistakably a delta rather than a count.
+- **Phylogenetic tree labels collided.** `buildPhylogeny` centred each parent on its
+  children (`(min+max)/2`), so a single-child parent landed on its child's exact row —
+  two lifelines shared one `y` and their name labels rendered on top of each other
+  ("OLOS" over "THERA-21", "KARST-3" over "SOLEN-65"). Every node now takes its own
+  row in DFS pre-order, so each lineage is its own horizontal line.
+- **Status-strip tooltips were clipped into a broken block.** `.status-band { overflow:
+  hidden }` — present to trim the cell backgrounds to the band's rounded corners — also
+  sliced the InfoTip bubbles that pop above the top row, so the Alpha Age tip read as a
+  cut-off dark rectangle. The end cells are now rounded to the band directly (in both
+  the 5-column and 2-column layouts) and the clip is gone.
+- **Region page over-ran and mis-stacked.** The Region Events timeline rendered every
+  bundled event full-height (~25 cards, ~4000px); it now shows 8 with a "Show all N
+  events" reveal and clamps each summary to two lines. Population Composition stretched
+  its few bars to match the taller Related Species column, pinning them to the bottom
+  under a large empty gap; the grid now aligns to the start. The Life Field's
+  centred-square canvas left wide inert bands on its 16/9 shell; the shell is now 4/3,
+  cutting the dead width from ~44% to ~25%.
 - **Snapshot frame budget — the unbounded per-tick write.** `save_alpha` wrote a
   full snapshot set on every tick (~844 rows at Alpha's size, ~36M rows/day at the
   default 2s tick) with no retention. A production database reached ~64.7M

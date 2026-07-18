@@ -338,12 +338,15 @@ function formatDelta(
     return delta.to >= 1 ? "Collapsed in range" : "Recovered in range";
   }
 
-  const sign = delta.absolute > 0 ? "+" : "";
-  const absolute =
-    metric.format === "percent"
-      ? `${sign}${Math.round(delta.absolute * 100)} pts`
-      : `${sign}${Math.round(delta.absolute).toLocaleString()}`;
-  const relative = delta.percent === null ? "" : ` / ${sign}${delta.percent}%`;
+  // Sign from the rounded magnitude (not raw absolute), so a sub-unit change that
+  // rounds to nothing never shows a misleading "+0", and a genuine no-change reads
+  // as "±0" rather than a bare "0" that looks like an absolute reading.
+  const magnitude =
+    metric.format === "percent" ? Math.round(delta.absolute * 100) : Math.round(delta.absolute);
+  const sign = magnitude > 0 ? "+" : magnitude < 0 ? "-" : "±";
+  const body = Math.abs(magnitude).toLocaleString();
+  const absolute = metric.format === "percent" ? `${sign}${body} pts` : `${sign}${body}`;
+  const relative = delta.percent === null ? "" : ` / ${sign}${Math.abs(delta.percent)}%`;
   return `${absolute}${relative}`;
 }
 
