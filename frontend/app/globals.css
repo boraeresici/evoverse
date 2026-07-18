@@ -897,6 +897,12 @@ p {
   padding: 9px 12px;
 }
 
+.time-filters a.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fffdf8;
+}
+
 .chronicle-filter-panel {
   align-items: end;
   background: #f8f4eb;
