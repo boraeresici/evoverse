@@ -2851,8 +2851,12 @@ p {
 .markdown-article {
   display: grid;
   gap: 14px;
+  /* Capped for readability, but centred so the leftover width sits evenly on both
+     sides — left-aligned it read as an accidental right-hand gap. */
+  margin-inline: auto;
   max-width: 980px;
   padding: 22px;
+  width: 100%;
 }
 
 .markdown-article h1 {

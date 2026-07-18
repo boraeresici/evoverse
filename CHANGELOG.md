@@ -57,6 +57,10 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   the 100-card render cap on load. It now opens on the most recent window (`now`), and
   the time-filter tabs carry an active state (`aria-current`) so the default filtering
   is visible rather than silent; observers widen with Last 24h / Last 7d / All History.
+- **Info-page prose columns hung a one-sided gap.** The Markdown article on Genesis,
+  Science, Purpose and Resources kept its readability cap but was left-aligned, so on
+  wide screens all the leftover width piled up on the right and read as broken. The
+  column is now centred, so the whitespace sits evenly and reads as intentional.
 
 - **Population growth was rectified downward by integer truncation.** `int(N(1+g))`
   floors, and flooring is a rectifier at small `N`: it erased every positive tick whose
