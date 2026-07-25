@@ -8,6 +8,8 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-25
+
 ### Changed
 
 - **Collapse is now organic, not a 151-tick clock.** The last scripted beat —
@@ -90,8 +92,9 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   of each other ("OLOS" over "THERA-21", "KARST-3" over "SOLEN-65"). The tidy layout is
   kept — it stays compact and balanced around the lineage rather than staircasing every
   node onto its own row (which made deep trees enormous and skewed them downward) — and
-  each node's single-line label is now placed above *or* below its lifeline by a greedy
-  pass, so same-row labels never overlap.
+  each node's single-line label is now placed at the nearest free height by a greedy
+  pass over several stacked levels, so even a dense cluster of lineages emerging at
+  nearly the same age stays legible (not just a pair sharing one row).
 - **Status-strip tooltips were clipped into a broken block.** `.status-band { overflow:
   hidden }` — present to trim the cell backgrounds to the band's rounded corners — also
   sliced the InfoTip bubbles that pop above the top row, so the Alpha Age tip read as a
