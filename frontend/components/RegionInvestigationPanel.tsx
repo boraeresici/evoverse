@@ -42,10 +42,14 @@ export function RegionInvestigationPanel({
               <span>{metric.label}</span>
               <strong>{formatPercent(lastMetric(report, metric.key))}</strong>
             </header>
-            {report ? (
-              <TrendSvg metricKey={metric.key} report={report} />
+            {hasTrend(report) ? (
+              <TrendSvg metricKey={metric.key} report={report as DynamicReportData} />
             ) : (
-              <p>Trend data is warming up.</p>
+              <p>
+                {report
+                  ? "Drift needs two snapshots — the window has one so far."
+                  : "Trend data is warming up."}
+              </p>
             )}
           </article>
         ))}
@@ -142,6 +146,16 @@ function chartGeometry(
 
 function lastMetric(report: DynamicReportData | null, metricKey: string) {
   return Number(report?.current.metrics[metricKey] ?? 0);
+}
+
+// A one-snapshot window has nothing to plot: a single dot on flat gridlines reads
+// as "flat trend" rather than "no trend yet". Only draw the chart once the series
+// spans two distinct ages.
+function hasTrend(report: DynamicReportData | null): report is DynamicReportData {
+  if (!report || report.series.length < 2) {
+    return false;
+  }
+  return report.series[0].worldAge !== report.series[report.series.length - 1].worldAge;
 }
 
 function formatPercent(value: number) {
