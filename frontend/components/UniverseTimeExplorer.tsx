@@ -27,6 +27,8 @@ type UniverseTimeExplorerProps = {
   liveSpecies: SpeciesSummary[];
   liveEvents: ChronicleEvent[];
   frames: SnapshotAggregate[];
+  /** Backend's authoritative era for the live frame (event-gated, not age-based). */
+  liveEra?: string;
 };
 
 type HistoricalFrame = {
@@ -38,7 +40,8 @@ export function UniverseTimeExplorer({
   liveRegions,
   liveSpecies,
   liveEvents,
-  frames
+  frames,
+  liveEra
 }: UniverseTimeExplorerProps) {
   // frames are passed newest-first from the snapshots API; present ascending.
   const ordered = useMemo(() => [...frames].sort((a, b) => a.worldAge - b.worldAge), [frames]);
@@ -190,6 +193,7 @@ export function UniverseTimeExplorer({
         onLive={goLive}
         onZoom={setZoom}
         onToggleLog={() => setLogAxis((value) => !value)}
+        liveEra={liveEra}
       />
 
       {!live && activeFrame ? (

@@ -58,6 +58,7 @@ export default async function UniversePage() {
         liveSpecies={speciesData?.species ?? []}
         liveEvents={chronicleData?.events ?? []}
         frames={snapshots?.snapshots ?? []}
+        liveEra={data.universe.currentEra}
       />
     </main>
   );

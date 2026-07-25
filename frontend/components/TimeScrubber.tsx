@@ -22,6 +22,7 @@ type TimeScrubberProps = {
   onLive: () => void;
   onZoom: (zoom: TimeZoom) => void;
   onToggleLog: () => void;
+  liveEra?: string;
 };
 
 export function TimeScrubber({
@@ -37,7 +38,8 @@ export function TimeScrubber({
   onTogglePlay,
   onLive,
   onZoom,
-  onToggleLog
+  onToggleLog,
+  liveEra
 }: TimeScrubberProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
@@ -85,7 +87,7 @@ export function TimeScrubber({
         <div className="scrubber-caption">
           <span className={`scrubber-live-dot${live ? " live" : " history"}`} aria-hidden="true" />
           <strong>{live ? "Live" : "Time travel"}</strong>
-          {currentFrame ? <span>{frameSubtitle(currentFrame)}</span> : null}
+          {currentFrame ? <span>{frameSubtitle(currentFrame, live ? liveEra : undefined)}</span> : null}
           {loading ? <Loader2 size={14} className="spin" aria-hidden="true" /> : null}
         </div>
         <div className="scrubber-eras" aria-hidden="true">

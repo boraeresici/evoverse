@@ -134,9 +134,13 @@ export function stabilityOf(frame: SnapshotAggregate): number {
   return typeof value === "number" ? value : 0;
 }
 
-export function frameSubtitle(frame: SnapshotAggregate): string {
-  const era = eraForAge(frame.worldAge);
-  return `Age ${frame.worldAge.toLocaleString()} · ${era.label} Era · ${frame.speciesCount.toLocaleString()} species · ${frame.populationCount.toLocaleString()} population`;
+export function frameSubtitle(frame: SnapshotAggregate, eraLabel?: string): string {
+  // `eraForAge` is an age-band approximation; the real era is event-gated
+  // (homochirality), so the live frame passes the backend's `currentEra` to keep
+  // this label from contradicting the status band above it. Historical frames have
+  // no stored era, so they fall back to the age band.
+  const eraText = eraLabel ?? `${eraForAge(frame.worldAge).label} Era`;
+  return `Age ${frame.worldAge.toLocaleString()} · ${eraText} · ${frame.speciesCount.toLocaleString()} species · ${frame.populationCount.toLocaleString()} population`;
 }
 
 function clamp01(value: number): number {

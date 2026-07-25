@@ -51,8 +51,17 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the design and approach, an
   each card's summary to two lines.
 - **Single-snapshot report charts read as a flat trend, not "no trend yet".** A window
   of one snapshot plotted a lone dot on flat gridlines beside a "±0" delta, so a
-  live metric looked static. The Dynamic Report and Replay charts now show an explicit
-  "needs at least two snapshots" note while keeping the current value in view.
+  live metric looked static. The Dynamic Report, Replay, and the region page's Region
+  Signals charts now show an explicit "needs at least two snapshots" note while keeping
+  the current value in view.
+- **The universe scrubber and the status band disagreed on the era.** The live scrubber
+  labelled the era from a frontend age-band table (`eraForAge`, ~6k = "Expansion"), while
+  the status band showed the backend's real, event-gated era ("Stabilization" — earned
+  when homochirality latched, not at a fixed age). The live frame now takes its era from
+  the backend `currentEra`, so the two agree; historical frames keep the age-band label.
+- **Region comparison opened on two empty regions.** It defaulted to `region-001` and
+  `region-002`, usually unclaimed, so the page loaded on an all-zero comparison. It now
+  defaults to the two most-populated regions.
 - **The Chronicle landed on all of history.** The feed defaulted to `all` and ran to
   the 100-card render cap on load. It now opens on the most recent window (`now`), and
   the time-filter tabs carry an active state (`aria-current`) so the default filtering

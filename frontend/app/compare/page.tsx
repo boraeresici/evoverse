@@ -21,8 +21,11 @@ export default async function ComparePage({
     return <EmptyState title="Region comparison unavailable" />;
   }
 
-  const leftRegionId = params.left ?? regions[0].id;
-  const rightRegionId = params.right ?? regions[1]?.id ?? regions[0].id;
+  // Default to the two most-populated regions rather than region-001/-002, which
+  // are usually unclaimed and open the page on an all-zero comparison.
+  const ranked = [...regions].sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+  const leftRegionId = params.left ?? ranked[0].id;
+  const rightRegionId = params.right ?? ranked[1]?.id ?? ranked[0].id;
   const [leftReport, rightReport] = await Promise.all([
     getDynamicReport({ scope: "region", regionId: leftRegionId, limit: 12 }),
     getDynamicReport({ scope: "region", regionId: rightRegionId, limit: 12 })
