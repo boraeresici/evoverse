@@ -14,7 +14,7 @@ from app.persistence.migrations import (
 def test_discovers_initial_sql_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 15
+    assert len(migrations) == 16
     assert migrations[0].version == "001"
     assert migrations[0].name == "initial_schema"
     assert len(migrations[0].checksum) == 64
@@ -61,6 +61,9 @@ def test_discovers_initial_sql_migration() -> None:
     assert migrations[14].version == "015"
     assert migrations[14].name == "resource_report_and_decline_reference"
     assert "ADD COLUMN IF NOT EXISTS last_reported_resource_density" in migrations[14].sql
+    assert migrations[15].version == "016"
+    assert migrations[15].name == "refugium_grace_before_extinction"
+    assert "ADD COLUMN IF NOT EXISTS extinction_grace_ticks" in migrations[15].sql
 
 
 def test_upgrade_applies_pending_sql_migrations(tmp_path) -> None:

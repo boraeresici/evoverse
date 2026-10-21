@@ -43,6 +43,14 @@ EVENT_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
             "acting on the region at the time."
         ),
     },
+    "region_colonized": {
+        "required": ("source_region_id", "founder_population"),
+        "optional": (),
+        "description": (
+            "A vacant but habitable region was recolonised by a living lineage "
+            "spilling in from an adjacent region — a niche coming back to life."
+        ),
+    },
     "catalyst_action": {
         "required": ("action_type", "action_id", "user_id"),
         "optional": ("day_key",),

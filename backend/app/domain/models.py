@@ -37,6 +37,7 @@ class EventType(StrEnum):
     MUTATION_DETECTED = "mutation_detected"
     REGION_RESOURCE_SHIFT = "region_resource_shift"
     REGION_COLLAPSE = "region_collapse"
+    REGION_COLONIZED = "region_colonized"
     CATALYST_ACTION = "catalyst_action"
     SYMMETRY_BREAK = "symmetry_break"
     ERA_ADVANCED = "era_advanced"
@@ -162,6 +163,14 @@ class Species:
     # the 0..1 mismatch burden used for selection. See docs/CHIRALITY_AND_MIND.md §6.2–6.3.
     chirality: int = 0
     heterochiral_load: float = 0.0
+    # Refugium grace before extinction. A lineage at or under the extinction floor is
+    # not written off the first tick it dips there — it keeps being simulated for a
+    # grace window so a recovering habitat can lift it back. This counts the
+    # consecutive ticks it has sat at/under the floor; it resets on recovery and is
+    # cleared when the lineage is finalised extinct. Extinction stays permanent — the
+    # grace only delays the *declaration*, it never revives a lineage the world has
+    # already ended. See SpeciesStatusRules.relict_grace_ticks.
+    extinction_grace_ticks: int = 0
     # Cognitive homochirality (T2, not yet driven). The Intelligence-Era gate reads
     # this, so it stays unreachable until the cognitive tier sets it. See §6.4–6.5.
     mind_locked: bool = False

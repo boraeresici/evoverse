@@ -7,6 +7,7 @@ from app.domain import (
     EVENT_PAYLOAD_SCHEMA_VERSION,
     CatalystActionType,
     EventType,
+    SpeciesStatus,
     event_payload_schema,
     validate_event_payload,
 )
@@ -215,6 +216,188 @@ def test_a_slow_slide_is_reported_once_not_every_tick() -> None:
     assert region.last_reported_resource_density == region.resource_density
     engine.advance(state, ticks=5)
     assert len(shifts()) == 1
+
+
+def _living_species_with_populations(state):
+    return next(
+        species
+        for species in state.species.values()
+        if species.status != SpeciesStatus.EXTINCT
+        and any(pop.species_id == species.id for pop in state.populations.values())
+    )
+
+
+def _pin_to_floor(state, species, count: int) -> None:
+    """Collapse a lineage onto a single population holding ``count`` individuals."""
+    pops = [pop for pop in state.populations.values() if pop.species_id == species.id]
+    for pop in pops[1:]:
+        pop.population_count = 0
+    pops[0].population_count = count
+
+
+def test_a_dip_to_the_floor_is_a_grace_not_an_instant_extinction() -> None:
+    """Touching the extinction floor no longer writes a lineage off on the spot.
+    It enters a refugium grace — still alive, still simulated — and if its habitat
+    lifts it back above the floor it keeps living."""
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    floor = engine.rules.species_status.extinct_population
+    species = _living_species_with_populations(state)
+
+    _pin_to_floor(state, species, floor)
+    engine._update_species_statuses(state)
+    assert species.status != SpeciesStatus.EXTINCT
+    assert species.extinction_grace_ticks == 1
+
+    # The habitat recovers before the grace runs out.
+    _pin_to_floor(state, species, floor + 500)
+    engine._update_species_statuses(state)
+    assert species.status != SpeciesStatus.EXTINCT
+    assert species.extinction_grace_ticks == 0
+
+
+def test_a_collapse_that_outlasts_the_grace_ends_and_zeroes_the_lineage() -> None:
+    """A lineage held at the floor for the whole grace window is finalised extinct,
+    and its residual count is zeroed — extinction and population agree."""
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    rules = engine.rules.species_status
+    species = _living_species_with_populations(state)
+
+    for _ in range(rules.relict_grace_ticks):
+        _pin_to_floor(state, species, rules.extinct_population)
+        engine._update_species_statuses(state)
+
+    assert species.status == SpeciesStatus.EXTINCT
+    remaining = sum(
+        pop.population_count
+        for pop in state.populations.values()
+        if pop.species_id == species.id
+    )
+    assert remaining == 0
+
+
+def test_an_extinct_lineage_is_never_left_frozen_at_the_floor() -> None:
+    """The bug behind 'extinct / 12 population': an extinct lineage used to keep the
+    count it died holding, so the title said 12 while the field said 0. Extinction
+    now zeroes it on the next status pass, legacy remnants included."""
+    state = seed_alpha(seed=4211)
+    engine = SimulationEngine(seed=4211)
+    species = _living_species_with_populations(state)
+    species.status = SpeciesStatus.EXTINCT
+    _pin_to_floor(state, species, 12)
+
+    engine._update_species_statuses(state)
+
+    remaining = sum(
+        pop.population_count
+        for pop in state.populations.values()
+        if pop.species_id == species.id
+    )
+    assert remaining == 0
+    assert species.status == SpeciesStatus.EXTINCT
+
+
+def _colonisation_engine(chance: float) -> SimulationEngine:
+    rules = replace(
+        DEFAULT_SIMULATION_RULES,
+        colonization=replace(DEFAULT_SIMULATION_RULES.colonization, colonization_chance=chance),
+    )
+    return SimulationEngine(seed=4211, rules=rules)
+
+
+def _make_vacant_habitable_region_next_to_a_source(state, engine):
+    """Set up a strong source population next to an emptied, habitable region.
+    Returns the vacant target region."""
+    rules = engine.rules.colonization
+    source = max(state.populations.values(), key=lambda pop: pop.population_count)
+    source.population_count = rules.min_source_population + rules.founder_population + 200
+    source_region = state.regions[source.region_id]
+
+    target = next(
+        region
+        for region in state.regions.values()
+        if abs(region.x - source_region.x) + abs(region.y - source_region.y) == 1
+    )
+    for population in state.populations.values():
+        if population.region_id == target.id:
+            population.population_count = 0
+    target.collapsed = False
+    target.energy_level = 0.9
+    target.resource_density = 0.9
+    target.stability = 0.9
+    target.chirality_ee = 0.0  # racemic target: no lineage is wrong-handed here
+    return target
+
+
+def test_a_vacant_habitable_region_is_recolonised_from_a_neighbour() -> None:
+    """Conway-style pull: an empty but viable niche draws colonists from a living
+    neighbour, so a region that lost its life comes back rather than staying dead."""
+    state = seed_alpha(seed=4211)
+    engine = _colonisation_engine(chance=1.0)  # certain, for a deterministic test
+    target = _make_vacant_habitable_region_next_to_a_source(state, engine)
+
+    before = len(state.events)
+    engine._colonize_empty_regions(state)
+
+    target_population = sum(
+        pop.population_count
+        for pop in state.populations.values()
+        if pop.region_id == target.id
+    )
+    assert target_population > 0
+    colonized = [
+        event
+        for event in state.events[before:]
+        if event.event_type == EventType.REGION_COLONIZED
+    ]
+    assert colonized and colonized[0].region_id == target.id
+
+
+def test_colonisation_can_be_switched_off() -> None:
+    """colonization_chance = 0 disables recolonisation entirely."""
+    state = seed_alpha(seed=4211)
+    engine = _colonisation_engine(chance=0.0)
+    target = _make_vacant_habitable_region_next_to_a_source(state, engine)
+
+    before = len(state.events)
+    engine._colonize_empty_regions(state)
+
+    assert not [
+        event
+        for event in state.events[before:]
+        if event.event_type == EventType.REGION_COLONIZED
+    ]
+    target_population = sum(
+        pop.population_count
+        for pop in state.populations.values()
+        if pop.region_id == target.id
+    )
+    assert target_population == 0
+
+
+def test_colonisation_cannot_restart_a_map_with_no_life_left() -> None:
+    """Colonisation refills niches while life exists somewhere; it cannot conjure
+    life from an empty map. That boundary is exactly what re-origination (Layer B)
+    is for — this test pins it so the two layers stay distinct."""
+    state = seed_alpha(seed=4211)
+    engine = _colonisation_engine(chance=1.0)
+    for population in state.populations.values():
+        population.population_count = 0
+    for region in state.regions.values():
+        region.collapsed = False
+        region.energy_level = 0.6
+        region.resource_density = 0.6
+        region.stability = 0.6
+
+    before = len(state.events)
+    engine._colonize_empty_regions(state)
+
+    assert not [
+        event
+        for event in state.events[before:]
+        if event.event_type == EventType.REGION_COLONIZED
+    ]
 
 
 def test_simulation_is_deterministic_for_same_seed() -> None:

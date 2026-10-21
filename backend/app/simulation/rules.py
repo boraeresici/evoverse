@@ -152,6 +152,13 @@ class SpeciationRules:
 @dataclass(frozen=True)
 class SpeciesStatusRules:
     extinct_population: int = 12
+    # A species at or under ``extinct_population`` is not declared extinct on the
+    # first tick — it enters a refugium grace and keeps being simulated, so a
+    # recovering habitat can lift it back above the floor. Only a lineage that stays
+    # at/under the floor for this many consecutive ticks (or reaches zero) is
+    # finalised extinct. Extinction remains permanent; this bounds how long the
+    # world waits before saying so. See app/domain/models.py Species.
+    relict_grace_ticks: int = 200
     dominant_share: float = 0.82
     dominant_min_population: int = 4500
     declining_population: int = 650
@@ -221,6 +228,32 @@ class UniverseRules:
 
 
 @dataclass(frozen=True)
+class ColonizationRules:
+    """Local recolonisation of vacant niches (recovery model, Layer A). Migration is
+    the push — an overcrowded region sheds life to a neighbour; this is the pull — an
+    empty but habitable region draws colonists from an adjacent living lineage, the
+    way Conway's grid births into an empty cell from its neighbours. It refills
+    niches a collapse or extinction vacated *while life still exists on the map*; it
+    cannot restart a world with none left, which is what re-origination handles."""
+
+    # Per-tick probability that a given empty, habitable region is recolonised by a
+    # living neighbour. 0 disables recolonisation; small values make it a trickle
+    # spreading across the map rather than an instant refill the tick a region empties.
+    colonization_chance: float = 0.04
+    # A neighbour only sends colonists if it can spare them: it must sit well above
+    # the extinction floor, and only the surplus over this line is ever donated, so
+    # colonisation never pushes the source itself toward collapse.
+    min_source_population: int = 400
+    founder_population: int = 45
+    # A niche is worth colonising only once its habitat has recovered — these track
+    # the region recovery thresholds (RegionRules.recovery_*), set a little above so
+    # a founder colony does not land somewhere about to re-collapse.
+    energy_min: float = 0.35
+    resource_min: float = 0.35
+    stability_min: float = 0.40
+
+
+@dataclass(frozen=True)
 class SimulationRules:
     catalyst: CatalystRules = field(default_factory=CatalystRules)
     region: RegionRules = field(default_factory=RegionRules)
@@ -229,6 +262,7 @@ class SimulationRules:
     species_status: SpeciesStatusRules = field(default_factory=SpeciesStatusRules)
     universe: UniverseRules = field(default_factory=UniverseRules)
     chirality: ChiralityRules = field(default_factory=ChiralityRules)
+    colonization: ColonizationRules = field(default_factory=ColonizationRules)
 
 
 DEFAULT_SIMULATION_RULES = SimulationRules()

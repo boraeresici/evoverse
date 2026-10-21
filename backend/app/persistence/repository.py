@@ -210,6 +210,7 @@ class AlphaStateRepository:
                     traits=Traits(**row["traits"]),
                     chirality=int(row["chirality"]),
                     heterochiral_load=float(row["heterochiral_load"]),
+                    extinction_grace_ticks=int(row["extinction_grace_ticks"]),
                 )
                 for row in species_rows
             },
@@ -412,6 +413,7 @@ class AlphaStateRepository:
                         "traits": item.traits.to_public(),
                         "chirality": item.chirality,
                         "heterochiral_load": item.heterochiral_load,
+                        "extinction_grace_ticks": item.extinction_grace_ticks,
                     },
                 )
             if state.populations:

@@ -10,6 +10,7 @@ from app.domain import CatalystActionType
 from app.simulation.rules import (
     CatalystRules,
     ChiralityRules,
+    ColonizationRules,
     DEFAULT_SIMULATION_RULES,
     PopulationRules,
     RegionRules,
@@ -30,6 +31,7 @@ SECTION_TYPES = {
     "species_status": SpeciesStatusRules,
     "universe": UniverseRules,
     "chirality": ChiralityRules,
+    "colonization": ColonizationRules,
 }
 
 

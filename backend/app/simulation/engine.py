@@ -55,6 +55,7 @@ class SimulationEngine:
             self._advance_regions(state)
             self._advance_chirality(state)
             self._advance_populations(state)
+            self._colonize_empty_regions(state)
             self._maybe_speciate(state)
             self._update_species_statuses(state)
             self._recalculate_dominant_species(state)
@@ -637,6 +638,113 @@ class SimulationEngine:
             )
         state.populations[key].population_count += moving
 
+    def _colonize_empty_regions(self, state: AlphaState) -> None:
+        """Conway-style local birth at the region scale: an empty but habitable
+        region is repopulated by a living neighbour spilling into the vacancy.
+        Migration is the push (an overcrowded region sheds life); this is the pull
+        (an open, viable niche draws colonists). It refills niches a collapse or
+        extinction vacated while life still exists on the map — restarting a world
+        with none left is re-origination's job, not this.
+
+        Each vacancy rolls independently at ``colonization_chance``, keyed by region
+        and tick, so the map refills as a deterministic trickle rather than a burst
+        the tick neighbours can first reach it."""
+        rules = self.rules.colonization
+        if rules.colonization_chance <= 0:
+            return
+
+        living_by_region: dict[str, list[Population]] = defaultdict(list)
+        for population in state.populations.values():
+            if population.population_count > 0:
+                living_by_region[population.region_id].append(population)
+
+        for region in state.regions.values():
+            if region.collapsed or living_by_region.get(region.id):
+                continue
+            if (
+                region.energy_level < rules.energy_min
+                or region.resource_density < rules.resource_min
+                or region.stability < rules.stability_min
+            ):
+                continue
+            rng = stable_rng(state.seed, "colonization", region.id, state.universe.tick)
+            if rng.random() >= rules.colonization_chance:
+                continue
+            source = self._best_colonizer(state, region, living_by_region)
+            if source is not None:
+                self._found_colony(state, source, region)
+
+    def _best_colonizer(
+        self,
+        state: AlphaState,
+        target: Region,
+        living_by_region: dict[str, list[Population]],
+    ) -> Population | None:
+        """The abundant, viable neighbour that seeds a vacancy. Skips lineages that
+        cannot spare colonists, that are extinct, or whose committed hand is lethally
+        mismatched with the target — a colony that would just be culled there is no
+        colony. Deterministic: the largest eligible neighbour population wins, with
+        species id as a stable tie-break."""
+        rules = self.rules.colonization
+        lethal_load = self.rules.chirality.heterochiral_lethal_load
+        best: Population | None = None
+        best_key: tuple[int, str] | None = None
+        for region in state.regions.values():
+            if abs(region.x - target.x) + abs(region.y - target.y) != 1:
+                continue
+            for population in living_by_region.get(region.id, ()):
+                if population.population_count <= rules.min_source_population:
+                    continue
+                species = state.species[population.species_id]
+                if species.status == SpeciesStatus.EXTINCT:
+                    continue
+                if self._heterochiral_mismatch(species, target) >= lethal_load:
+                    continue
+                key = (population.population_count, population.species_id)
+                if best_key is None or key > best_key:
+                    best, best_key = population, key
+        return best
+
+    def _found_colony(self, state: AlphaState, source: Population, target: Region) -> None:
+        """Move a founder cohort from the source into the vacant region. Only the
+        source's surplus over the min-source line is ever taken, so seeding a niche
+        never tips the donor toward collapse."""
+        rules = self.rules.colonization
+        founders = min(
+            rules.founder_population,
+            source.population_count - rules.min_source_population,
+        )
+        if founders <= 0:
+            return
+        source.population_count -= founders
+        species = state.species[source.species_id]
+        key = (species.id, target.id)
+        if key not in state.populations:
+            state.populations[key] = Population(
+                species_id=species.id,
+                region_id=target.id,
+                population_count=0,
+                energy_consumption=source.energy_consumption,
+                growth_rate=0.0,
+                migration_pressure=0.0,
+                last_updated_tick=state.universe.tick,
+                decline_reference_population=0,
+            )
+        state.populations[key].population_count += founders
+        title, summary = event_templates.region_colonized(species, target)
+        state.add_event(
+            EventType.REGION_COLONIZED,
+            title,
+            summary,
+            severity=3,
+            region_id=target.id,
+            species_id=species.id,
+            payload={
+                "source_region_id": source.region_id,
+                "founder_population": founders,
+            },
+        )
+
     def _update_species_statuses(self, state: AlphaState) -> None:
         rules = self.rules.species_status
         totals = self._species_totals(state)
@@ -645,9 +753,29 @@ class SimulationEngine:
         max_total = max(totals.values())
         for species in state.species.values():
             total = totals.get(species.id, 0)
+            # Extinction is terminal. Keep it, but make sure nothing is left frozen
+            # behind it — a residual count from the tick it died, or a legacy row
+            # from before the grace rule — so an extinct lineage always reads as zero
+            # population, never "extinct / 12".
+            if species.status == SpeciesStatus.EXTINCT:
+                if total > 0:
+                    self._zero_species_populations(state, species.id)
+                continue
+            if total <= 0:
+                self._finalize_extinction(state, species)
+                continue
             if total <= rules.extinct_population:
-                species.status = SpeciesStatus.EXTINCT
-            elif total >= max_total * rules.dominant_share and total > rules.dominant_min_population:
+                # Refugium grace: at/under the floor but not gone. The lineage stays
+                # alive (it is advanced again next tick) so a recovering habitat can
+                # lift it back, and only a collapse that outlasts the grace ends it.
+                species.extinction_grace_ticks += 1
+                if species.extinction_grace_ticks >= rules.relict_grace_ticks:
+                    self._finalize_extinction(state, species)
+                else:
+                    species.status = SpeciesStatus.DECLINING
+                continue
+            species.extinction_grace_ticks = 0
+            if total >= max_total * rules.dominant_share and total > rules.dominant_min_population:
                 species.status = SpeciesStatus.DOMINANT
             elif total < rules.declining_population:
                 species.status = SpeciesStatus.DECLINING
@@ -659,6 +787,20 @@ class SimulationEngine:
                 species.status = SpeciesStatus.EMERGING
             else:
                 species.status = SpeciesStatus.STABLE
+
+    def _finalize_extinction(self, state: AlphaState, species: Species) -> None:
+        """Declare a lineage extinct for good: mark the status and zero every
+        population it holds, so nothing is left sitting at the floor. Extinction is
+        permanent — new life returns through colonisation and re-origination, never
+        by reviving a lineage the world has already ended."""
+        species.status = SpeciesStatus.EXTINCT
+        species.extinction_grace_ticks = 0
+        self._zero_species_populations(state, species.id)
+
+    def _zero_species_populations(self, state: AlphaState, species_id: str) -> None:
+        for population in state.populations.values():
+            if population.species_id == species_id and population.population_count > 0:
+                population.population_count = 0
 
     def _recalculate_dominant_species(self, state: AlphaState) -> None:
         by_region: dict[str, list[Population]] = defaultdict(list)

@@ -136,6 +136,20 @@ Eras are earned by it, and never lost:
 
 The mind lock belongs to the cognitive tier, which is designed but has not shipped, so no lineage carries one yet. Intelligence therefore still sits ahead of Alpha rather than behind a switch — which is how the gate was meant to work: an era is earned, not granted. The index goes on climbing toward it in the meantime, and that half of the gate is already real.
 
+## Can a species come back once it goes extinct?
+
+No — extinction is permanent for a lineage, the same way it is in life. What changes is *when* Alpha declares it. A population that falls to the extinction floor is not written off on the spot: it enters a brief refugium grace, still simulated, so if its region's energy and resources recover in time the same lineage can climb back above the floor. Only a population that stays below it through the whole grace window — or reaches zero — is declared extinct, and then its count is zeroed rather than left sitting at the floor. So "extinct" always means gone, never "gone but still showing a dozen individuals."
+
+## Can the whole universe die out for good?
+
+By design, no permanent dead end — but extinction stays real on the way there. Three pressures refill life without erasing the cost of losing it:
+
+- **Recolonisation.** A region that empties but stays habitable is repopulated by living neighbours spilling into it — the same local, neighbour-driven birth Conway's grid runs, raised to the region scale. Vacated niches get filled while life still exists somewhere on the map.
+- **Refugium grace.** Small populations get a window to recover before extinction is declared (see above), so an ordinary bad stretch does not become a permanent loss.
+- **Re-origination.** Only when life has genuinely gone — or a habitable region has stood empty for a long time — can a new lineage originate from chemistry, echoing the origin-of-life question Alpha is built on. It is deliberately rare and condition-gated (a region must have broken symmetry and carry enough energy and resources), so it reads as life beginning again, not as respawning what died.
+
+Eras stay earned by the homochirality index, never granted, so re-origination never skips the maturity gate. The intent is the world the benchmark targets — neither exploding nor flatlined into a frozen, all-extinct dead end.
+
 # Using Alpha
 
 ## How do I read the universe map?

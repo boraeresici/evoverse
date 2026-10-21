@@ -245,6 +245,7 @@ convergence with a cited thesis is a compass and not a certificate.
 | [SIMULATION_FLOW_AND_FORMULAS.md](docs/SIMULATION_FLOW_AND_FORMULAS.md) | Every closed-form tick rule, transcribed from the engine. Code is the source of truth. |
 | [CHIRALITY_AND_MIND.md](docs/CHIRALITY_AND_MIND.md) | The chirality/mind thesis, the T1 phase diagram, and the two-tier design. |
 | [CORRELATION_AND_PATTERNS.md](docs/CORRELATION_AND_PATTERNS.md) | Correlation length, the scale-free scan, and the organism pattern census. |
+| [NOVELTY_AND_SURPRISE.md](docs/NOVELTY_AND_SURPRISE.md) | **Design proposal.** The prediction-error reading — a two-tier model of the typical and `−log p` surprise against it. |
 | [DOMAIN_GLOSSARY.md](docs/DOMAIN_GLOSSARY.md) | Vocabulary. |
 | [EVENT_PAYLOAD_SCHEMAS.md](docs/EVENT_PAYLOAD_SCHEMAS.md) | The versioned event envelope and per-type payloads. |
 | [SNAPSHOT_STRATEGY.md](docs/SNAPSHOT_STRATEGY.md) | Snapshot tiers and the time-navigation strategy. |

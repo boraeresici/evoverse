@@ -40,6 +40,13 @@ def region_collapse(region: Region) -> tuple[str, str]:
     )
 
 
+def region_colonized(species: Species, region: Region) -> tuple[str, str]:
+    return (
+        f"{region.id} recolonised",
+        f"{species.name} spread into {region.id}, refilling a vacant but habitable niche.",
+    )
+
+
 def _hand_label(hand_sign: int) -> str:
     return "right-handed" if hand_sign >= 0 else "left-handed"
 
@@ -95,6 +102,7 @@ EVENT_TYPE_LABELS: dict[EventType, str] = {
     EventType.MUTATION_DETECTED: "Mutation detected",
     EventType.REGION_RESOURCE_SHIFT: "Resource shift",
     EventType.REGION_COLLAPSE: "Region collapse",
+    EventType.REGION_COLONIZED: "Recolonisation",
     EventType.CATALYST_ACTION: "Catalyst action",
     EventType.SYMMETRY_BREAK: "Symmetry break",
     EventType.ERA_ADVANCED: "Era advanced",

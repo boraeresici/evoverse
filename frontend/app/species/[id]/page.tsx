@@ -70,7 +70,10 @@ export default async function SpeciesPage({
           <p className="eyebrow">Generation {data.species.generation}</p>
           <h1>{data.species.name}</h1>
           <p>
-            {data.species.status} / {data.species.population.toLocaleString()} population
+            {data.species.status}
+            {data.species.status === "extinct" && data.species.population === 0
+              ? " · no living population"
+              : ` / ${data.species.population.toLocaleString()} population`}
           </p>
         </div>
         <div className="detail-actions">

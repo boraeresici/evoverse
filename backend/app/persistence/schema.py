@@ -77,6 +77,7 @@ species = Table(
     Column("traits", JSON, nullable=False),
     Column("chirality", Integer, nullable=False, default=0),
     Column("heterochiral_load", Numeric(6, 4), nullable=False, default=0),
+    Column("extinction_grace_ticks", Integer, nullable=False, default=0),
 )
 
 populations = Table(

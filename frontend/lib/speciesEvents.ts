@@ -7,6 +7,7 @@ export type EventCategory =
   | "extinction"
   | "decline"
   | "collapse"
+  | "colonization"
   | "resource_shift"
   | "catalyst"
   | "other";
@@ -37,6 +38,7 @@ export const CATEGORY_META: Record<
   extinction: { label: "Extinction", tone: "decline", short: "Ext" },
   decline: { label: "Decline", tone: "decline", short: "Dec" },
   collapse: { label: "Region collapse", tone: "collapse", short: "Col" },
+  colonization: { label: "Recolonisation", tone: "emergence", short: "Rec" },
   resource_shift: { label: "Resource shift", tone: "neutral", short: "Res" },
   catalyst: { label: "Catalyst", tone: "catalyst", short: "Cat" },
   other: { label: "Signal", tone: "neutral", short: "Sig" }
@@ -84,6 +86,9 @@ export function categorizeEvent(
   if (type.includes("region_collapse")) {
     return build(event, "collapse");
   }
+  if (type.includes("region_colonized")) {
+    return build(event, "colonization");
+  }
   if (type.includes("region_resource_shift")) {
     return build(event, "resource_shift");
   }
@@ -97,7 +102,8 @@ const IMPORTANT_CATEGORIES: ReadonlySet<EventCategory> = new Set([
   "emergence",
   "major_mutation",
   "extinction",
-  "collapse"
+  "collapse",
+  "colonization"
 ]);
 
 function build(event: ChronicleEvent, category: EventCategory): CategorizedEvent {
